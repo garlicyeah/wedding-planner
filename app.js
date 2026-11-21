@@ -699,19 +699,47 @@ function onBudgetChange(el) {
   if (!isEditing()) render(); else scheduleRefresh(3000);
 }
 
-async function uploadPhoto(file) {
+// Decode any image the browser can show; iPhone/Mac HEIC photos are converted in the browser first.
+function loadScript(src) {
+  return new Promise((resolve, reject) => { const el = document.createElement('script'); el.src = src; el.onload = resolve; el.onerror = () => reject(new Error('Could not load the HEIC converter. Check your connection.')); document.head.appendChild(el); });
+}
+const isHeic = (file) => /hei[cf]$/i.test(file.type) || /\.hei[cf]$/i.test(file.name || '');
+async function decodeImage(blob) {
+  try { return await createImageBitmap(blob); } catch { /* fall back to an <img> element */ }
+  const url = URL.createObjectURL(blob);
   try {
-    const img = await createImageBitmap(file);
-    const scale = Math.min(1, 1100 / Math.max(img.width, img.height));
-    const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    const img = new Image(); img.src = url; await img.decode();
+    return img;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
+async function readPhoto(file) {
+  let blob = file;
+  if (isHeic(file)) {
+    try { return await decodeImage(file); } catch { /* browser can't read HEIC natively (Chrome) */ }
+    toast('Converting your iPhone photo…');
+    if (!window.heic2any) await loadScript('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+    const out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+    blob = Array.isArray(out) ? out[0] : out;
+  }
+  try { return await decodeImage(blob); } catch {
+    throw new Error(`This browser can't open that file${file.type ? ` (${file.type})` : ''}. Try a JPEG or PNG.`);
+  }
+}
+async function uploadPhoto(file) {
+  let b64;
+  try {
+    const img = await readPhoto(file);
+    const w = img.width || img.naturalWidth; const h = img.height || img.naturalHeight;
+    const scale = Math.min(1, 1100 / Math.max(w, h));
+    const c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    const b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
-    const chunks = b64.match(/.{1,45000}/g) || [];
-    if (chunks.length > 40) { toast('That photo is too large. Try a smaller one.', true); return; }
-    state.data.photo = b64; render();
-    const rows = Array.from({ length: 40 }, (_, i) => (i < chunks.length ? [`photo:${i}`, chunks[i]] : ['', '']));
-    save(() => writeCells([{ range: 'Settings!A2:B41', values: rows }], true), 'Photo saved (private to your sheet)');
-  } catch (e) { console.error(e); toast("Couldn't read that image", true); }
+    b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+  } catch (e) { console.error('Photo upload failed:', e); toast(e.message || "Couldn't read that image", true); return; }
+  const chunks = b64.match(/.{1,45000}/g) || [];
+  if (chunks.length > 40) { toast('That photo is too large. Try a smaller one.', true); return; }
+  state.data.photo = b64; render();
+  const rows = Array.from({ length: 40 }, (_, i) => (i < chunks.length ? [`photo:${i}`, chunks[i]] : ['', '']));
+  save(() => writeCells([{ range: 'Settings!A2:B41', values: rows }], true), 'Photo saved (private to your sheet)');
 }
 
 async function signIn(prompt = '') {
