@@ -6,8 +6,8 @@ const SID = CONFIG.spreadsheetId;
 const STATUSES = ['Not started', 'In progress', 'Done', 'Skipped'];
 const PHASES = ['12+ months', '9–12 months', '6–9 months', '3–6 months', '2–3 months', '1–2 months', 'Final week', 'After'];
 const RANGES = [
-  'Overview!B4:B7', 'Timeline!A5:J400', 'Budget!A5:G40', 'Guests!A4:N995', 'Vendors!A5:M36',
-  'Comments!A2:E3000', 'Decisions!A2:F3000', 'Quotes!A2:P500', 'Payments!A2:I500', 'Settings!A2:B50',
+  'Overview!B4:B7', 'Timeline!A5:K400', 'Budget!A5:H40', 'Guests!A4:O995', 'Vendors!A5:N36',
+  'Comments!A2:E3000', 'Decisions!A2:F3000', 'Quotes!A2:Q500', 'Payments!A2:J500', 'Settings!A2:B50',
 ];
 const TABS = [
   ['week', 'This week', 'Week'], ['tasks', 'Tasks', 'Tasks'], ['vendors', 'Vendors', 'Vendors'],
@@ -167,7 +167,7 @@ function parse(valueRanges) {
   const [ov, tl, bu, gu, ve, co, de, qu, pa, se] = valueRanges.map((x) => x.values || []);
   const s = (v) => (v ?? '');
   const budget = [];
-  for (let i = 0; i < bu.length; i++) { const r = bu[i] || []; if (r[0] === 'TOTAL') break; if (r[0]) budget.push({ row: 5 + i, cat: s(r[0]), pct: r[1], est: r[3], act: r[4], notes: s(r[6]) }); }
+  for (let i = 0; i < bu.length; i++) { const r = bu[i] || []; if (r[0] === 'TOTAL') break; if (r[0]) budget.push({ row: 5 + i, cat: s(r[0]), pct: r[1], est: r[3], act: r[4], notes: s(r[6]), order: r[7] }); }
   const setting = (k) => { const r = se.find((x) => x[0] === k); return r ? r[1] : undefined; };
   const photo = se.filter((r) => String(r[0] || '').startsWith('photo:'))
     .sort((a, b) => Number(a[0].split(':')[1]) - Number(b[0].split(':')[1])).map((r) => r[1] || '').join('');
@@ -176,25 +176,25 @@ function parse(valueRanges) {
     timelineLastRow: 4 + tl.length,
     tasks: tl.map((r, i) => ({
       row: 5 + i, phase: s(r[0]), name: s(r[1]), daysBefore: r[2], due: r[3], status: r[5] || 'Not started',
-      owner: s(r[6]), notes: s(r[7]), claude: s(r[8]), id: s(r[9]) || `R${5 + i}`,
+      owner: s(r[6]), notes: s(r[7]), claude: s(r[8]), id: s(r[9]) || `R${5 + i}`, order: r[10],
     })).filter((t) => String(t.name).trim()),
     budget,
     guests: Array.from({ length: Math.max(gu.length, 1) }, (_, i) => gu[i] || []).map((r, i) => ({
       row: 4 + i, group: s(r[1]), name: s(r[2]), side: s(r[3]), rel: s(r[4]), contact: s(r[5]), address: s(r[6]),
-      std: s(r[7]), rsvp: s(r[8]), meal: s(r[9]), diet: s(r[10]), table: s(r[11]), thanks: s(r[12]), party: s(r[13]),
+      std: s(r[7]), rsvp: s(r[8]), meal: s(r[9]), diet: s(r[10]), table: s(r[11]), thanks: s(r[12]), party: s(r[13]), order: r[14],
     })),
     vendors: Array.from({ length: 32 }, (_, i) => ve[i] || []).map((r, i) => ({
       row: 5 + i, day: s(r[0]), cat: s(r[1]), vendor: s(r[2]), contact: s(r[3]), phone: s(r[4]), signed: s(r[5]),
-      total: r[6], deposit: r[7], other: r[8], due: r[10], arrival: r[11], notes: s(r[12]),
+      total: r[6], deposit: r[7], other: r[8], due: r[10], arrival: r[11], notes: s(r[12]), order: r[13],
     })),
     comments: co.map((r) => ({ ts: r[0], id: s(r[1]), task: s(r[2]), author: s(r[3]), text: s(r[4]) })).filter((c) => c.text),
     decisions: de.map((r) => ({ ts: r[0], author: s(r[1]), type: s(r[2]), id: s(r[3]), note: s(r[4]), text: s(r[5]) })).filter((d) => d.text || d.note),
     quotes: qu.map((r, i) => ({
       row: 2 + i, id: s(r[0]) || `Q${2 + i}`, cat: s(r[1]), vendor: s(r[2]), status: s(r[3]) || 'New', total: r[4], received: r[5], expires: r[6],
-      included: s(r[7]), assumes: s(r[8]), schedule: s(r[9]), cancel: s(r[10]), fees: s(r[11]), contact: s(r[12]), summary: s(r[13]), link: s(r[14]),
+      included: s(r[7]), assumes: s(r[8]), schedule: s(r[9]), cancel: s(r[10]), fees: s(r[11]), contact: s(r[12]), summary: s(r[13]), link: s(r[14]), order: r[16],
     })).filter((q) => q.vendor || q.cat),
     payments: pa.map((r, i) => ({
-      row: 2 + i, vendor: s(r[0]), cat: s(r[1]), what: s(r[2]), amount: r[3], due: r[4], status: s(r[5]) || 'Planned', paidOn: r[6], notes: s(r[7]), quoteId: s(r[8]),
+      row: 2 + i, vendor: s(r[0]), cat: s(r[1]), what: s(r[2]), amount: r[3], due: r[4], status: s(r[5]) || 'Planned', paidOn: r[6], notes: s(r[7]), quoteId: s(r[8]), order: r[9],
     })).filter((p) => p.vendor || isNum(p.amount)),
     photo,
     pearlTap: setting('pearl_tap'), pearlCheer: setting('pearl_cheer'),
@@ -213,7 +213,7 @@ async function load() {
 const state = {
   data: null, signedIn: false, authExpired: false, error: '',
   tab: store.get('wp_tab2', 'week'), me: store.get('wp_me', null),
-  filter: 'open', search: '', openBudget: null, vtab: 'booked', compare: new Set(),
+  filter: 'open', search: '', openBudget: null, sorts: store.get('wp_sorts', {}), vtab: 'booked', compare: new Set(),
   gq: '', gside: '', ggroup: '', grsvp: '', drawer: null, modal: null,
 };
 
@@ -378,7 +378,7 @@ function weekView(D) {
 
     <section class="grid-2 section">
       <div class="card pad"><div class="section-head"><h2>Coming up to pay</h2><button class="linkbtn" data-act="tab" data-tab="money">Money</button></div>
-        ${upcoming.length ? `<div class="list">${upcoming.map(paymentItem).join('')}</div>` : '<p class="muted small" style="margin:0">No payments scheduled yet. They appear here once you book a vendor or add one under Money.</p>'}
+        ${upcoming.length ? `<div class="list">${upcoming.map((p) => paymentItem(p)).join('')}</div>` : '<p class="muted small" style="margin:0">No payments scheduled yet. They appear here once you book a vendor or add one under Money.</p>'}
       </div>
       <div class="card pad"><div class="section-head"><h2>Workload ahead</h2><span class="hint">open tasks by month</span></div>${workloadChart(D)}</div>
     </section>`;
@@ -404,9 +404,9 @@ function ownerPick(t) {
   const opt = (v, ini) => `<button type="button" class="opick ${v} ${t.owner === v ? 'on' : ''}" data-act="set-owner" data-id="${esc(t.id)}" data-v="${v}" aria-pressed="${t.owner === v}" title="${t.owner === v ? 'Tap again to clear' : `Assign to ${v}`}"><span class="full">${v}</span><span class="ini">${ini}</span></button>`;
   return `<div class="owner-pick" role="group" aria-label="Owner">${opt('Sharon', 'S')}${opt('Claire', 'C')}${opt('Both', 'S+C')}</div>`;
 }
-function taskItem(t, { showNote = false } = {}) {
+function taskItem(t, { showNote = false, dragOn = false } = {}) {
   const n = commentsFor(t.id).length;
-  return `<div class="item clickable ${t.closed ? 'done' : ''}" data-act="open-task" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="${esc(t.name)}, open details">
+  return `<div class="item clickable ${t.closed ? 'done' : ''}" data-act="open-task" data-id="${esc(t.id)}" data-key="${esc(t.id)}" role="button" tabindex="0" aria-label="${esc(t.name)}, open details">${dragOn ? grip(t.name) : ''}
     <button class="check ${t.status === 'Done' ? 'on' : ''}" data-act="toggle-done" data-id="${esc(t.id)}" aria-label="${t.status === 'Done' ? 'Mark not done' : 'Mark done'}"></button>
     <div class="item-main"><div class="item-title">${esc(t.name)}${t.claude && !showNote ? ' <span class="note-dot" title="Claude has a note">✦</span>' : ''}</div>
       <div class="item-meta">${dueText(t)}${t.status === 'In progress' ? ' · <span class="pill data">In progress</span>' : ''}${n ? ` · ${plural(n, 'comment')}` : ''}</div>
@@ -415,9 +415,9 @@ function taskItem(t, { showNote = false } = {}) {
     <div class="item-side">${t.closed ? `<span class="who ${esc(t.owner)}">${esc(t.owner || '')}</span>` : ownerPick(t)}</div>
   </div>`;
 }
-function paymentItem(p) {
+function paymentItem(p, dragOn = false) {
   const late = isNum(p.due) && p.due < todaySerial() && p.status !== 'Paid';
-  return `<div class="item"><div class="item-main"><div class="item-title">${esc(p.vendor || p.cat)}${p.what ? ` · <span class="muted">${esc(p.what)}</span>` : ''}</div>
+  return `<div class="item" data-key="${p.row}">${dragOn ? grip(p.vendor || p.cat) : ''}<div class="item-main"><div class="item-title">${esc(p.vendor || p.cat)}${p.what ? ` · <span class="muted">${esc(p.what)}</span>` : ''}</div>
     <div class="item-meta">${isNum(p.due) ? `<span class="${late ? 'late-text' : ''}">Due ${shortDate(p.due)}</span>` : 'No due date'}${p.status === 'Paid' ? ` · paid ${shortDate(p.paidOn)}` : ''}</div></div>
     <div class="item-side"><b style="font-variant-numeric:tabular-nums">${money(p.amount)}</b>
     ${p.status === 'Paid' ? '<span class="pill good">Paid</span>' : `<a class="linkbtn" href="${calLink(p)}" target="_blank" rel="noopener" title="Add a reminder to Google Calendar">Remind</a><button class="btn small" data-act="mark-paid" data-row="${p.row}">Mark paid</button>`}</div></div>`;
@@ -428,6 +428,99 @@ function calLink(p) {
   const q = new URLSearchParams({ action: 'TEMPLATE', text: `Pay ${p.vendor || p.cat} ${money(p.amount)}`, dates: `${f(p.due)}/${f(p.due + 1)}`, details: `${p.what || 'Wedding payment'} — from the wedding planner` });
   return `https://calendar.google.com/calendar/render?${q}`;
 }
+
+// ----- Sorting and custom order -----
+// Every list can be sorted; "Custom order" follows the Order column in its sheet tab and is the only mode you can drag in.
+const SORTS = {
+  tasks: [['due', 'Due date'], ['custom', 'Custom order'], ['name', 'Name'], ['owner', 'Owner'], ['status', 'Status']],
+  guests: [['custom', 'Custom order'], ['name', 'Name'], ['side', 'Side'], ['group', 'Invite group'], ['rsvp', 'RSVP'], ['rel', 'Relationship']],
+  vendors: [['custom', 'Custom order'], ['cat', 'Category'], ['day', 'Day'], ['state', 'Booking status'], ['cost', 'Cost']],
+  budget: [['custom', 'Custom order'], ['budget', 'Budget'], ['expected', 'Expected cost'], ['name', 'Name']],
+  payments: [['due', 'Due date'], ['custom', 'Custom order'], ['amount', 'Amount'], ['vendor', 'Vendor']],
+  quotes: [['price', 'Price'], ['custom', 'Custom order'], ['received', 'Received'], ['status', 'Status']],
+};
+const ORDER_COL = { tasks: ['Timeline', 'K'], guests: ['Guests', 'O'], vendors: ['Vendors', 'N'], budget: ['Budget', 'H'], payments: ['Payments', 'J'], quotes: ['Quotes', 'Q'] };
+const sortOf = (list) => ({ by: SORTS[list][0][0], dir: 1, ...(state.sorts[list] || {}) });
+const isCustom = (list) => sortOf(list).by === 'custom';
+const custOrd = (x) => (Array.isArray(x) ? Math.min(...x.map(custOrd)) : (isNum(x.order) ? x.order : 100000 + x.row));
+const byStr = (f) => (a, b) => { const x = String(f(a) ?? '').trim(); const y = String(f(b) ?? '').trim(); return (!x) - (!y) || x.localeCompare(y, undefined, { sensitivity: 'base', numeric: true }); };
+const byNum = (f) => (a, b) => { const x = f(a); const y = f(b); return (!isNum(x)) - (!isNum(y)) || n0(x) - n0(y); };
+const byRank = (f, ranks) => (a, b) => { const r = (v) => { const i = ranks.indexOf(v); return i < 0 ? ranks.length : i; }; return r(f(a)) - r(f(b)); };
+const first = (ms) => (Array.isArray(ms) ? ms[0] : ms);
+const SORT_FNS = {
+  tasks: { due: byNum((t) => t.due), name: byStr((t) => t.name), owner: byStr((t) => t.owner), status: byRank((t) => t.status, STATUSES) },
+  guests: { name: byStr((ms) => shortName(first(ms))), side: byStr((ms) => first(ms).side), group: byStr((ms) => first(ms).group || 'A'), rsvp: byRank((ms) => first(ms).rsvp || 'Pending', ['Yes', 'Pending', 'No']), rel: byStr((ms) => first(ms).rel) },
+  vendors: { cat: byStr((v) => v.cat), day: byRank((v) => v.day, ['Friday', 'Saturday', 'Sunday', 'All', 'N/A', '']), state: byRank((v) => bookingState(v)[0], ['booked', 'quoted', '']), cost: byNum((v) => v.total) },
+  budget: { budget: byNum((b) => b.pct), expected: byNum((b) => b.est), name: byStr((b) => b.cat) },
+  payments: { due: (a, b) => (a.status === 'Paid') - (b.status === 'Paid') || byNum((p) => p.due)(a, b), amount: byNum((p) => p.amount), vendor: byStr((p) => p.vendor || p.cat) },
+  quotes: { price: byNum((q) => q.total), received: byNum((q) => q.received), status: byRank((q) => q.status, ['Shortlisted', 'New', 'Booked', 'Passed']) },
+};
+function sortItems(list, items) {
+  const { by, dir } = sortOf(list); const fn = by === 'custom' ? null : SORT_FNS[list][by];
+  return [...items].sort((a, b) => (fn ? fn(a, b) * dir : 0) || custOrd(a) - custOrd(b));
+}
+function sortControl(list) {
+  const { by, dir } = sortOf(list);
+  return `<div class="sortctl"><select class="field sort-select" id="sort-${list}" aria-label="Sort" data-act="sort" data-list="${list}">${SORTS[list].map(([k, l]) => `<option value="${k}" ${k === by ? 'selected' : ''}>Sort: ${l}</option>`).join('')}</select>${by === 'custom' ? '<span class="hint drag-hint">Drag <b>⋮⋮</b> to reorder</span>' : `<button class="btn small ghost dir" data-act="sort-dir" data-list="${list}" title="${dir > 0 ? 'Ascending. Tap to flip' : 'Descending. Tap to flip'}" aria-label="${dir > 0 ? 'Ascending' : 'Descending'}, flip">${dir > 0 ? '↑' : '↓'}</button>`}</div>`;
+}
+const grip = (label) => `<button type="button" class="grip" data-act="grip" aria-label="Reorder ${esc(label)}: drag, or press arrow up or down" title="Drag to reorder">⋮⋮</button>`;
+function fullOrder(list) {
+  const d = state.data;
+  if (list === 'guests') return partiesOf(d.guests.filter((g) => g.name)).sort((a, b) => custOrd(a) - custOrd(b)).map((ms) => ({ key: partyKey(ms[0]), items: ms }));
+  const src = { tasks: d.tasks, vendors: d.vendors.filter((v) => v.cat || v.vendor), budget: d.budget, payments: d.payments, quotes: d.quotes }[list];
+  return [...src].sort((a, b) => custOrd(a) - custOrd(b)).map((x) => ({ key: list === 'tasks' ? String(x.id) : String(x.row), items: [x] }));
+}
+// visibleKeys: the new order of what's on screen (maybe a filtered subset); hidden items keep their places.
+function reorder(list, visibleKeys, focusKey) {
+  const full = fullOrder(list); const byKey = new Map(full.map((g) => [g.key, g])); const vis = new Set(visibleKeys);
+  const slots = full.map((g, i) => (vis.has(g.key) ? i : -1)).filter((i) => i >= 0);
+  const next = [...full]; slots.forEach((slot, j) => { if (byKey.get(visibleKeys[j])) next[slot] = byKey.get(visibleKeys[j]); });
+  const items = next.flatMap((g) => g.items); items.forEach((it, i) => { it.order = i + 1; });
+  const [sheet, col] = ORDER_COL[list]; const rows = items.map((i) => i.row); const min = Math.min(...rows); const max = Math.max(...rows);
+  const vals = Array.from({ length: max - min + 1 }, () => [null]); items.forEach((it) => { vals[it.row - min] = [it.order]; });
+  render();
+  if (focusKey) { const g = app.querySelector(`[data-drag-list="${list}"] [data-key="${CSS.escape(focusKey)}"] .grip`); if (g) g.focus(); }
+  save(() => writeCells([{ range: `${sheet}!${col}${min}:${col}${max}`, values: vals }]), 'Order saved');
+}
+// Pointer-based drag (mouse and touch) with a drop line; arrow keys on the grip move one step.
+let drag = null;
+const listItems = (listEl) => [...listEl.querySelectorAll('[data-key]')].filter((el) => el.closest('[data-drag-list]') === listEl);
+app.addEventListener('pointerdown', (e) => {
+  const g = e.target.closest('.grip'); if (!g) return;
+  const item = g.closest('[data-key]'); const listEl = item?.closest('[data-drag-list]'); if (!item || !listEl) return;
+  e.preventDefault();
+  drag = { item, listEl, list: listEl.dataset.dragList, target: null, after: false, moved: false, x: e.clientX, y: e.clientY };
+  item.classList.add('dragging'); document.body.classList.add('is-dragging');
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (Math.abs(e.clientY - drag.y) + Math.abs(e.clientX - drag.x) > 4) drag.moved = true;
+  const grid = /bgrid|quote-grid/.test(drag.listEl.className);
+  let best = null; let bd = Infinity;
+  for (const el of listItems(drag.listEl)) { if (el === drag.item) continue; const r = el.getBoundingClientRect(); const dd = Math.hypot(e.clientX - (r.left + r.width / 2), (e.clientY - (r.top + r.height / 2)) * (grid ? 1 : 2)); if (dd < bd) { bd = dd; best = el; } }
+  drag.listEl.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+  if (best) { const r = best.getBoundingClientRect(); const after = grid ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2; best.classList.add(after ? 'drop-after' : 'drop-before'); drag.target = best; drag.after = after; }
+  if (e.clientY < 70) window.scrollBy(0, -14); else if (e.clientY > window.innerHeight - 70) window.scrollBy(0, 14);
+});
+function endDrag(commit) {
+  if (!drag) return; const { item, listEl, target, after, list, moved } = drag; drag = null;
+  item.classList.remove('dragging'); document.body.classList.remove('is-dragging');
+  listEl.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+  if (!commit || !moved || !target) return;
+  const keys = listItems(listEl).map((el) => el.dataset.key).filter((k) => k !== item.dataset.key);
+  const idx = keys.indexOf(target.dataset.key); keys.splice(after ? idx + 1 : idx, 0, item.dataset.key);
+  reorder(list, keys);
+}
+document.addEventListener('pointerup', () => endDrag(true));
+document.addEventListener('pointercancel', () => endDrag(false));
+app.addEventListener('keydown', (e) => {
+  const g = e.target.closest?.('.grip'); if (!g || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  const item = g.closest('[data-key]'); const listEl = item?.closest('[data-drag-list]'); if (!listEl) return;
+  e.preventDefault();
+  const keys = listItems(listEl).map((el) => el.dataset.key); const i = keys.indexOf(item.dataset.key);
+  const j = ['ArrowUp', 'ArrowLeft'].includes(e.key) ? i - 1 : i + 1; if (j < 0 || j >= keys.length) return;
+  [keys[i], keys[j]] = [keys[j], keys[i]]; reorder(listEl.dataset.dragList, keys, item.dataset.key);
+});
 
 // ----- Tasks -----
 const FILTERS = [
@@ -441,6 +534,7 @@ function tasksView() {
   const block = (title, items, cls = '') => (items.length ? `<div class="group-label ${cls}">${title} · ${items.length}</div><div class="card list">${items.map((t) => taskItem(t)).join('')}</div>` : '');
   let body;
   if (!list.length) body = '<div class="card"><div class="empty">No tasks match.</div></div>';
+  else if (sortOf('tasks').by !== 'due') body = `<div class="card list" ${isCustom('tasks') ? 'data-drag-list="tasks"' : ''}>${sortItems('tasks', list).map((t) => taskItem(t, { dragOn: isCustom('tasks') })).join('')}</div>`;
   else if (!['open', 'mine', 'unassigned', 'all'].includes(state.filter)) body = block(FILTERS.find((x) => x[0] === state.filter)[1], list);
   else {
     const rest = list.filter((t) => !t.overdue && !t.soon && !t.closed);
@@ -450,7 +544,7 @@ function tasksView() {
   }
   return `<div class="page-head"><div><h1>Tasks</h1></div><button class="btn primary" data-act="add-task">+ Add task</button></div>
     <div class="toolbar"><input class="field search" type="search" placeholder="Search tasks" aria-label="Search tasks" data-act="search" value="${esc(state.search)}">
-      <div class="chip-row">${FILTERS.map(([k, l, fn]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${l}<span class="n">${state.data.tasks.filter(fn).length}</span></button>`).join('')}</div></div>
+      <div class="chip-row">${FILTERS.map(([k, l, fn]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${l}<span class="n">${state.data.tasks.filter(fn).length}</span></button>`).join('')}</div>${sortControl('tasks')}</div>
     ${body}`;
 }
 
@@ -471,11 +565,13 @@ function bookingState(v) {
 }
 function bookedView(D) {
   const booked = D.vendors.filter((v) => v.signed === 'Yes').length;
+  const dragOn = isCustom('vendors');
   return `<section><div class="section-head"><h2>Booking progress</h2><span class="hint">${booked} of ${D.vendors.length} booked · tap one to edit</span></div>
-      <div class="bgrid">${D.vendors.map((v) => { const [cls, label] = bookingState(v); return `<button class="bcell ${cls}" data-act="open-vendor" data-row="${v.row}">
-        <span class="bcell-top"><span>${esc(v.cat || 'Vendor')}</span>${v.day && v.day !== 'Saturday' ? `<span class="muted small">${esc(v.day)}</span>` : ''}</span>
+      <div class="list-tools">${sortControl('vendors')}</div>
+      <div class="bgrid" ${dragOn ? 'data-drag-list="vendors"' : ''}>${sortItems('vendors', D.vendors).map((v) => { const [cls, label] = bookingState(v); return `<div class="bcell ${cls}" data-act="open-vendor" data-row="${v.row}" data-key="${v.row}" role="button" tabindex="0" aria-label="${esc(v.cat)}${v.vendor ? `, ${esc(v.vendor)}` : ''}, open details">
+        <span class="bcell-top"><span>${dragOn ? grip(v.cat || 'vendor') : ''}${esc(v.cat || 'Vendor')}</span>${v.day && v.day !== 'Saturday' ? `<span class="muted small">${esc(v.day)}</span>` : ''}</span>
         <span class="bcell-vendor">${v.vendor ? esc(v.vendor) : '<span class="muted">No vendor yet</span>'}</span>
-        <span class="bcell-foot"><span class="state">${cls === 'booked' ? '✓ ' : ''}${label}</span>${isNum(v.total) ? `<span class="tnum">${money(v.total)}</span>` : ''}</span></button>`; }).join('')}</div>
+        <span class="bcell-foot"><span class="state">${cls === 'booked' ? '✓ ' : ''}${label}</span>${isNum(v.total) ? `<span class="tnum">${money(v.total)}</span>` : ''}</span></div>`; }).join('')}</div>
       <div class="legend"><span><i style="background:var(--good)"></i>Booked (contract signed)</span><span><i style="background:var(--data)"></i>Quoted or in talks</span><span><i style="background:var(--line-strong)"></i>Not started</span></div></section>`;
 }
 function quotesView() {
@@ -484,16 +580,17 @@ function quotesView() {
   if (!qs.length) return `<div class="card pad"><p style="margin:0">${how}</p></div>`;
   const cats = [...new Set(qs.map((q) => q.cat || 'Other'))];
   const selected = qs.filter((q) => state.compare.has(q.id));
-  return `<p class="muted small" style="margin-top:0">${how}</p>
+  const dragOn = isCustom('quotes');
+  return `<p class="muted small" style="margin-top:0">${how}</p><div class="list-tools">${sortControl('quotes')}</div>
     ${cats.map((c) => `<section class="section" style="margin-top:24px"><div class="section-head"><h2>${esc(c)}</h2><span class="hint">${qs.filter((q) => (q.cat || 'Other') === c).length} quotes</span></div>
-      <div class="quote-grid">${qs.filter((q) => (q.cat || 'Other') === c).sort((a, b) => n0(a.total) - n0(b.total)).map(quoteCard).join('')}</div></section>`).join('')}
+      <div class="quote-grid" ${dragOn ? 'data-drag-list="quotes"' : ''}>${sortItems('quotes', qs.filter((q) => (q.cat || 'Other') === c)).map((q) => quoteCard(q, dragOn)).join('')}</div></section>`).join('')}
     ${selected.length ? `<div class="compare-bar"><span>${selected.length} selected to compare</span><span style="display:flex;gap:8px"><button class="btn small ghost" data-act="clear-compare">Clear</button><button class="btn small" data-act="open-compare" ${selected.length < 2 ? 'disabled' : ''}>Compare</button></span></div>` : ''}`;
 }
-function quoteCard(q) {
+function quoteCard(q, dragOn = false) {
   const pill = { Booked: 'good', Shortlisted: 'data', Passed: '' }[q.status] ?? '';
   const exp = isNum(q.expires) && q.expires < todaySerial() + 14 && q.status !== 'Booked' ? `<span class="late-text small">Expires ${shortDate(q.expires)}</span>` : (isNum(q.expires) ? `<span class="muted small">Expires ${shortDate(q.expires)}</span>` : '');
-  return `<div class="card quote ${q.status === 'Passed' ? 'passed' : ''}">
-    <div class="row"><b>${esc(q.vendor)}</b><span class="pill ${pill}">${esc(q.status)}</span></div>
+  return `<div class="card quote ${q.status === 'Passed' ? 'passed' : ''}" data-key="${q.row}">
+    <div class="row"><b>${dragOn ? grip(q.vendor) : ''}${esc(q.vendor)}</b><span class="pill ${pill}">${esc(q.status)}</span></div>
     <div class="row"><span class="price">${money(q.total)}</span>${exp}</div>
     ${q.summary ? `<div class="summary">✦ ${esc(q.summary)}</div>` : ''}
     ${q.included ? `<div class="small muted">${esc(q.included.slice(0, 140))}${q.included.length > 140 ? '…' : ''}</div>` : ''}
@@ -521,8 +618,8 @@ function budgetSummary(b, total) {
 function budgetItem(b, total) {
   const open = state.openBudget === b.row; const p = n0(b.pct) * total;
   const f = (k, label, val, extra = '') => `<label class="f">${label}<input class="field" id="b-${k}-${b.row}" data-act="budget" data-row="${b.row}" data-k="${k}" value="${val}" ${extra}></label>`;
-  return `<div class="bitem ${open ? 'open' : ''}">
-    <button class="brow" data-act="toggle-budget" data-row="${b.row}" aria-expanded="${open}" data-brow="${b.row}" data-tip="${esc(`${b.cat}: budget ${money(p)}, expected ${money(n0(b.est))}, paid ${money(n0(b.act))}`)}">${budgetSummary(b, total)}</button>
+  return `<div class="bitem ${open ? 'open' : ''}" data-key="${b.row}"><div class="bitem-head">${isCustom('budget') ? grip(b.cat) : ''}
+    <button class="brow" data-act="toggle-budget" data-row="${b.row}" aria-expanded="${open}" data-brow="${b.row}" data-tip="${esc(`${b.cat}: budget ${money(p)}, expected ${money(n0(b.est))}, paid ${money(n0(b.act))}`)}">${budgetSummary(b, total)}</button></div>
     ${open ? `<div class="bedit">
       ${f('cat', 'Category', esc(b.cat))}
       ${f('plan', 'Budget ($)', isNum(b.pct) ? Math.round(p) : '', 'inputmode="decimal"')}
@@ -549,7 +646,7 @@ function moneyView(D) {
   const bars = []; if (lateAmt) bars.push({ label: 'Late', value: Math.round(lateAmt), cls: 'late', tip: `${money(lateAmt)} overdue` });
   for (const m of months) { const v = Math.round(byMonth[key(m)] || 0); bars.push({ label: m.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }), value: v, tip: `${m.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })}: ${money(v)}` }); }
   const cashChart = columns(bars.map((b) => ({ ...b, value: b.value }))).replace(/<div class="val">(\d+)<\/div>/g, (_, v) => `<div class="val">${Number(v) >= 1000 ? `$${Math.round(Number(v) / 100) / 10}k` : `$${v}`}</div>`);
-  const pays = [...D.payments].sort((a, b) => (a.status === 'Paid') - (b.status === 'Paid') || n0(a.due) - n0(b.due));
+  const pays = sortItems('payments', D.payments);
   const splitOff = Math.abs(D.splits - 1) > 0.001;
   const over = D.splits * total - total;
   return `<div class="page-head"><div><h1>Money</h1><p>Budget ${money(total)} · ${money(D.committed)} booked · ${money(D.paid)} paid</p></div><button class="btn primary" data-act="add-payment">+ Add payment</button></div>
@@ -558,12 +655,12 @@ function moneyView(D) {
       <div class="card tile"><div class="label">Booked with vendors</div><div class="big">${money(D.committed)}<small> of ${money(total)}</small></div>${meter(D.committed, total)}<div class="foot">${money(total - D.committed)} not booked yet</div></div>
       <div class="card tile"><div class="label">Paid</div><div class="big">${money(D.paid)}<small> of ${money(D.committed)} booked</small></div>${meter(D.paid, D.committed, { cls: 'done' })}<div class="foot">${money(D.committed - D.paid)} still owed</div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Budget by category</h2><span style="display:flex;gap:12px;align-items:baseline"><span class="hint">Tap a category to edit it</span><button class="btn small" data-act="add-budget">+ Add category</button></span></div>
-      <div class="card blist">${d.budget.map((b) => budgetItem(b, total)).join('')}
+    <section class="section"><div class="section-head"><h2>Budget by category</h2><span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${sortControl('budget')}<button class="btn small" data-act="add-budget">+ Add category</button></span></div>
+      <div class="card blist"><div ${isCustom('budget') ? 'data-drag-list="budget"' : ''}>${sortItems('budget', d.budget).map((b) => budgetItem(b, total)).join('')}</div>
         <div class="btotal" id="budget-total">${budgetTotal(D.splits, total)}</div></div>
       <div class="legend"><span><i style="background:var(--data)"></i>Paid</span><span><i style="background:color-mix(in srgb,var(--data) 40%,transparent)"></i>Expected cost</span><span><i style="background:var(--data-soft)"></i>Budget</span><span><i style="background:var(--late)"></i>Over budget</span></div></section>
     <section class="section"><div class="section-head"><h2>Payments by month</h2><span class="hint">unpaid, scheduled</span></div><div class="card pad">${cashChart}</div></section>
-    <section class="section"><div class="section-head"><h2>Payments</h2></div><div class="card list">${pays.length ? pays.map(paymentItem).join('') : '<div class="empty">No payments yet. Booking a quote adds its payment schedule here, or tap “Add payment”.</div>'}</div></section>`;
+    <section class="section"><div class="section-head"><h2>Payments</h2>${sortControl('payments')}</div><div class="card list" ${isCustom('payments') ? 'data-drag-list="payments"' : ''}>${pays.length ? pays.map((p) => paymentItem(p, isCustom('payments'))).join('') : '<div class="empty">No payments yet. Booking a quote adds its payment schedule here, or tap “Add payment”.</div>'}</div></section>`;
 }
 
 // ----- Guests -----
@@ -574,7 +671,8 @@ function guestsView(D) {
     && (!state.ggroup || x.group === state.ggroup) && (!state.grsvp || (state.grsvp === 'Pending' ? !['Yes', 'No'].includes(x.rsvp) : x.rsvp === state.grsvp)));
   const parties = partiesOf(g);
   const match = new Set(rows.map((x) => x.row));
-  const shown = parties.filter((members) => members.some((m) => match.has(m.row)));
+  const shown = sortItems('guests', parties.filter((members) => members.some((m) => match.has(m.row))));
+  const dragOn = isCustom('guests');
   const max = Math.max(1, ...['Sharon', 'Claire', 'Both'].map((s) => g.filter((x) => x.side === s).length));
   const segRow = (side) => {
     const a = g.filter((x) => x.side === side && x.group !== 'B' && x.group !== 'C').length; const b = g.filter((x) => x.side === side && (x.group === 'B' || x.group === 'C')).length;
@@ -591,10 +689,10 @@ function guestsView(D) {
     <section class="section">
       <div class="filters"><input class="field search" type="search" placeholder="Search guests" data-act="gsearch" value="${esc(state.gq)}">
         ${sel('gside', 'Both sides', ['Sharon', 'Claire', 'Both'])}${sel('ggroup', 'All groups', ['A', 'B', 'C'])}${sel('grsvp', 'Any RSVP', ['Yes', 'No', 'Pending'])}
-        <span class="muted small">${rows.length} shown</span></div>
+        <span class="muted small">${rows.length} shown</span>${sortControl('guests')}</div>
       <datalist id="guest-names">${g.map((x) => `<option value="${esc(x.name)}">`).join('')}</datalist>
       ${suggestionsHTML(g)}
-      <div class="card list">${shown.length ? shown.map((members) => partyHTML(members)).join('') : '<div class="empty">No guests match.</div>'}</div>
+      <div class="card list" ${dragOn ? 'data-drag-list="guests"' : ''}>${shown.length ? shown.map((members) => partyHTML(members, dragOn)).join('') : '<div class="empty">No guests match.</div>'}</div>
     </section>`;
 }
 
@@ -607,8 +705,8 @@ function partiesOf(guests) {
   for (const [k, ms] of map) ms.sort((a, b) => (a.name === k ? -1 : b.name === k ? 1 : 0) || isPlusOne(a) - isPlusOne(b) || a.row - b.row);
   return [...map.values()];
 }
-function guestRow(x, inParty) {
-  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details"><div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
+function guestRow(x, inParty, dragOn = false) {
+  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" data-key="${esc(partyKey(x))}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details">${dragOn ? grip(x.name) : ''}<div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
     <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`;
 }
 // A party (partners and +1s) is one row: "Aislinn Mclaughlin & Abe", each name opens that person.
@@ -619,8 +717,8 @@ function rsvpPill(ms) {
   if (no === ms.length) return '<span class="pill late">No</span>';
   return yes || no ? `<span class="pill">${yes} yes${no ? ` · ${no} no` : ''}</span>` : '';
 }
-function partyHTML(members) {
-  if (members.length === 1) return guestRow(members[0], false);
+function partyHTML(members, dragOn = false) {
+  if (members.length === 1) return guestRow(members[0], false, dragOn);
   const named = members.filter((m) => !isPlusOne(m)); const plus = members.filter(isPlusOne);
   const nameBtn = (m) => `<button class="pname" data-act="open-guest" data-row="${m.row}" aria-label="${esc(m.name)}, open details">${esc(shortName(m))}</button>`;
   const names = named.map(nameBtn).join('<span class="amp">&amp;</span>')
@@ -629,7 +727,7 @@ function partyHTML(members) {
   const groups = [...new Set(members.map((m) => m.group || 'A'))].filter((x) => x !== 'A');
   const rels = [...new Set(members.map((m) => m.rel).filter(Boolean))];
   const hasAddr = members.some((m) => m.address);
-  return `<div class="item party-row"><div class="item-main"><div class="item-title pnames">${names}</div>
+  return `<div class="item party-row" data-key="${esc(partyKey(members[0]))}">${dragOn ? grip(named.map(shortName).join(' and ')) : ''}<div class="item-main"><div class="item-title pnames">${names}</div>
       <div class="item-meta">${esc(rels.join(' / ') || '—')} · ${plural(members.length, 'guest')}${hasAddr ? '' : ' · no address'}</div></div>
     <div class="item-side">${groups.length ? `<span class="pill">${esc(groups.join('/'))}-list</span>` : ''}${sides.map((sd) => `<span class="who ${esc(sd)}">${esc(sd)}</span>`).join('')}${rsvpPill(members)}</div></div>`;
 }
@@ -950,6 +1048,8 @@ async function signIn(prompt = '') {
 app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const d = state.data;
+  if (act === 'grip') return;
+  if (act === 'sort-dir') { const l = el.dataset.list; state.sorts[l] = { ...sortOf(l), dir: -sortOf(l).dir }; store.set('wp_sorts', state.sorts); render(); return; }
   if (['close-modal', 'close-drawer'].includes(act)) { if (e.target === el || el.tagName === 'BUTTON') { if (act === 'close-modal') state.modal = null; else state.drawer = null; render(); } return; }
   if (act === 'open-task') { const inner = e.target.closest('button, a, input, select'); if (inner && inner !== el) return; state.drawer = { type: 'task', id: el.dataset.id }; render(); return; }
   if (act === 'open-vendor') { state.drawer = { type: 'vendor', row: Number(el.dataset.row) }; render(); return; }
@@ -1008,7 +1108,8 @@ app.addEventListener('change', (e) => {
     const t = taskById(el.dataset.id); if (!t) return; const field = el.dataset.field;
     if (field === 'name' && !el.value.trim()) { el.value = t.name; return; }
     saveTaskField(t, field, el.value); if (['status', 'owner', 'due'].includes(field)) render();
-  } else if (act === 'cell') onCellChange(el);
+  } else if (act === 'sort') { const l = el.dataset.list; state.sorts[l] = { by: el.value, dir: 1 }; store.set('wp_sorts', state.sorts); render(); }
+  else if (act === 'cell') onCellChange(el);
   else if (act === 'budget') onBudgetChange(el);
   else if (act === 'compare') { if (el.checked) state.compare.add(el.dataset.id); else state.compare.delete(el.dataset.id); render(); }
   else if (act === 'ov') {
