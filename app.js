@@ -695,7 +695,7 @@ function guestsView(D) {
         <span class="muted small">${rows.length} shown</span>${sortControl('guests')}</div>
       <datalist id="guest-names">${g.map((x) => `<option value="${esc(x.name)}">`).join('')}</datalist>
       ${suggestionsHTML(g)}
-      <div class="card list" ${dragOn ? 'data-drag-list="guests"' : ''}>${shown.length ? shown.map((members) => partyHTML(members, dragOn)).join('') : '<div class="empty">No guests match.</div>'}</div>
+      <div class="card list glist" ${dragOn ? 'data-drag-list="guests"' : ''}><div class="glist-head" aria-hidden="true">${dragOn ? '<span class="gh-grip"></span>' : ''}<span class="gh-name">Guest</span><span class="g-rel">Relationship</span><span class="gh-side">Side · RSVP</span></div>${shown.length ? shown.map((members) => partyHTML(members, dragOn)).join('') : '<div class="empty">No guests match.</div>'}</div>
     </section>`;
 }
 
@@ -708,8 +708,21 @@ function partiesOf(guests) {
   for (const [k, ms] of map) ms.sort((a, b) => (a.name === k ? -1 : b.name === k ? 1 : 0) || isPlusOne(a) - isPlusOne(b) || a.row - b.row);
   return [...map.values()];
 }
+// Relationship tags: each relationship keeps the same soft color everywhere (hashed from its name).
+const TAG_TONES = ['peach', 'sage', 'mustard', 'sky', 'sand', 'rose'];
+// Colors go to relationships in the order they first appear in the guest list, so they're spread out and stay put.
+function relTone(rel) {
+  const key = rel.trim().toLowerCase(); const seen = [];
+  for (const g of state.data?.guests || []) { const k = (g.rel || '').trim().toLowerCase(); if (k && !seen.includes(k)) seen.push(k); if (k === key) break; }
+  const i = seen.indexOf(key); return TAG_TONES[(i < 0 ? seen.length : i) % TAG_TONES.length];
+}
+function relTag(rel) {
+  if (!rel) return '<span class="muted small">—</span>';
+  return `<span class="rtag t-${relTone(rel)}">${esc(rel)}</span>`;
+}
 function guestRow(x, inParty, dragOn = false) {
-  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" data-key="${esc(partyKey(x))}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details">${dragOn ? grip(x.name) : ''}<div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
+  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" data-key="${esc(partyKey(x))}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details">${dragOn ? grip(x.name) : ''}<div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta"><span class="rel-meta">${esc(x.rel || '—')}${x.address ? '' : ' · '}</span>${x.address ? '' : '<span>no address</span>'}</div></div>
+    <div class="g-rel">${relTag(x.rel)}</div>
     <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`;
 }
 // A party (partners and +1s) is one row: "Aislinn Mclaughlin & Abe", each name opens that person.
@@ -731,7 +744,8 @@ function partyHTML(members, dragOn = false) {
   const rels = [...new Set(members.map((m) => m.rel).filter(Boolean))];
   const hasAddr = members.some((m) => m.address);
   return `<div class="item party-row" data-key="${esc(partyKey(members[0]))}">${dragOn ? grip(named.map(shortName).join(' and ')) : ''}<div class="item-main"><div class="item-title pnames">${names}</div>
-      <div class="item-meta">${esc(rels.join(' / ') || '—')} · ${plural(members.length, 'guest')}${hasAddr ? '' : ' · no address'}</div></div>
+      <div class="item-meta"><span class="rel-meta">${esc(rels.join(' / ') || '—')} · </span>${plural(members.length, 'guest')}${hasAddr ? '' : ' · no address'}</div></div>
+    <div class="g-rel">${rels.length ? rels.map(relTag).join('') : relTag('')}</div>
     <div class="item-side">${groups.length ? `<span class="pill">${esc(groups.join('/'))}-list</span>` : ''}${sides.map((sd) => `<span class="who ${esc(sd)}">${esc(sd)}</span>`).join('')}${rsvpPill(members)}</div></div>`;
 }
 // Same last name, same side, neither in a party yet -> suggest linking (never automatic).
