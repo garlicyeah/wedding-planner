@@ -24,19 +24,24 @@ const ICON = {
 const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 // Pearl, the wedding mascot (hand-drawn SVG, so no personal photo lives in this public repo)
-const PEARL = `<path d="M22 14C13 30 17 45 31 49l9-19Z" fill="#c4672b"/><path d="M24.5 21c-4.5 11-2 20 6 23l5.5-13Z" fill="#5b4141"/>
-<path d="M78 14c9 16 5 31-9 35l-9-19Z" fill="#c4672b"/><path d="M75.5 21c4.5 11 2 20-6 23L64 31Z" fill="#5b4141"/>
+const PEARL = `<g class="p-ear p-ear-l"><path d="M22 14C13 30 17 45 31 49l9-19Z" fill="#c4672b"/><path d="M24.5 21c-4.5 11-2 20 6 23l5.5-13Z" fill="#5b4141"/></g>
+<g class="p-ear p-ear-r"><path d="M78 14c9 16 5 31-9 35l-9-19Z" fill="#c4672b"/><path d="M75.5 21c4.5 11 2 20-6 23L64 31Z" fill="#5b4141"/></g>
 <ellipse cx="50" cy="49" rx="25" ry="23" fill="#c4672b"/>
 <path d="M44 28c2-4.5 10-4.5 12 0l4 18c10 6 8 25-10 25s-20-19-10-25Z" fill="#f3e6cf"/>
-<circle cx="37" cy="45" r="3.7" fill="#1d1a19"/><circle cx="63" cy="45" r="3.7" fill="#1d1a19"/>
-<circle cx="38.3" cy="43.7" r="1.2" fill="#fff"/><circle cx="64.3" cy="43.7" r="1.2" fill="#fff"/>
+<g class="p-eyes"><circle cx="37" cy="45" r="3.7" fill="#1d1a19"/><circle cx="63" cy="45" r="3.7" fill="#1d1a19"/>
+<circle cx="38.3" cy="43.7" r="1.2" fill="#fff"/><circle cx="64.3" cy="43.7" r="1.2" fill="#fff"/></g>
 <ellipse cx="50" cy="60" rx="7" ry="5" fill="#f2b9a8"/>
 <ellipse cx="47.2" cy="60" rx="1.4" ry="1.1" fill="#3a2a2a"/><ellipse cx="52.8" cy="60" rx="1.4" ry="1.1" fill="#3a2a2a"/>
 <path d="M47.5 65.5q2.5 2 5 0" stroke="#3a2a2a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
 <path d="M25 69q25 11 50 0l-6 9q-19 22-38 0Z" fill="#6b9fd6"/><path d="M50 83l-6 12 6-3.5 6 3.5Z" fill="#5a8cc2"/>`;
-const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
+const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls} ${isNight() ? 'sleepy' : ''}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
 const PEARL_CHEERS = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
+function isNight() { const h = new Date().getHours(); return h >= 23 || h < 5; }
 function pearlLine(D) {
+  if (D.daysToGo === 0) return "Today's the day!! Pearl is so happy for you 💍";
+  if (D.daysToGo !== null && D.daysToGo > 0 && D.daysToGo <= 7) return `${plural(D.daysToGo, 'sleep')} to go! Pearl can hardly wait.`;
+  if (D.daysToGo !== null && D.daysToGo > 0 && D.daysToGo % 100 === 0) return `${D.daysToGo} days to go! Pearl is throwing confetti.`;
+  if (isNight()) return 'Pearl is asleep. You should be too 💤';
   if (D.overdue.length) return `Pearl's nudge: ${plural(D.overdue.length, 'task')} overdue. One at a time.`;
   if (D.soon.length) return `Pearl's nudge: ${plural(D.soon.length, 'task')} coming up this month.`;
   return 'Pearl says: all caught up!';
@@ -293,6 +298,7 @@ function render() {
     <nav class="tabbar">${nav('tabbar', 1)}</nav>
   </div>
   ${drawerView(D)}${modalView(D)}`;
+  maybeMilestone();
 }
 
 function signInView() {
@@ -907,9 +913,12 @@ app.addEventListener('click', (e) => {
   else if (act === 'pick-photo') document.getElementById('photo-input').click();
   else if (act === 'toggle-done') {
     e.stopPropagation(); const t = taskById(el.dataset.id); if (!t) return;
-    const nowDone = t.status !== 'Done';
+    const nowDone = t.status !== 'Done'; const lateBefore = derived().overdue.length;
     saveTaskField(t, 'status', nowDone ? 'Done' : 'Not started'); render();
-    if (nowDone) setTimeout(() => toast(PEARL_CHEERS[Math.floor(Math.random() * PEARL_CHEERS.length)]), 900);
+    if (nowDone) {
+      if (lateBefore > 0 && derived().overdue.length === 0) { setTimeout(() => { toast('Nothing overdue! Pearl does a victory hop 🎉'); burst(window.innerWidth / 2, window.innerHeight / 2, ['🎉', '🌿', '✨', '💕']); pearlRun(); }, 900); }
+      else { setTimeout(() => toast(PEARL_CHEERS[Math.floor(Math.random() * PEARL_CHEERS.length)]), 900); if (Math.random() < 0.35) pearlRun(); }
+    }
   } else if (act === 'quote-status') {
     const q = d.quotes.find((x) => x.id === el.dataset.id); if (!q) return; q.status = el.dataset.v; render();
     save(() => writeCells([{ range: `Quotes!D${q.row}`, values: [[q.status]] }]));
@@ -1069,6 +1078,69 @@ document.addEventListener('mousemove', (e) => {
   const x = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12); tip.style.left = `${x}px`; tip.style.top = `${e.clientY - tip.offsetHeight - 10}px`;
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.modal || state.drawer)) { state.modal = null; state.drawer = null; render(); } });
+
+// ---------- Pearl easter eggs ----------
+// Tap Pearl: she hops and says something. Tap 5 times fast: hearts. Type "pearl": she hops across the screen.
+// Finishing the last overdue task, countdown milestones and the wedding day get a little celebration.
+const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+function pearlLines() {
+  const lines = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?', 'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘'];
+  if (state.data) {
+    const D = derived();
+    if (D.daysToGo > 0) lines.push(`${D.daysToGo} sleeps until the wedding!`);
+    if (D.overdue.length) lines.push(`Psst… ${plural(D.overdue.length, 'task')} overdue. Pearl won't tell.`);
+    if (state.me) lines.push(`Hi ${state.me}! 👋`);
+  }
+  if (isNight()) lines.push('Zzz… oh! Pearl was just resting her eyes.');
+  return lines;
+}
+let bubbleTimer;
+function pearlSay(el, text) {
+  const b = document.getElementById('pearl-bubble'); if (!b) return;
+  b.textContent = text; b.classList.add('show');
+  const r = el.getBoundingClientRect();
+  b.style.left = `${Math.min(window.innerWidth - b.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - b.offsetWidth / 2))}px`;
+  b.style.top = `${r.top - b.offsetHeight - 10 < 8 ? r.bottom + 10 : r.top - b.offsetHeight - 10}px`;
+  clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => b.classList.remove('show'), 2800);
+}
+function burst(x, y, chars = ['❤️', '🌿', '✨', '💕']) {
+  if (reduceMotion()) return;
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement('span'); s.className = 'particle'; s.textContent = chars[i % chars.length];
+    const a = Math.random() * Math.PI * 2; const dist = 60 + Math.random() * 100;
+    s.style.left = `${x}px`; s.style.top = `${y}px`; s.style.setProperty('--dx', `${Math.cos(a) * dist}px`); s.style.setProperty('--dy', `${Math.sin(a) * dist - 50}px`);
+    document.body.appendChild(s); setTimeout(() => s.remove(), 1300);
+  }
+}
+function pearlRun() {
+  if (reduceMotion() || document.querySelector('.pearl-run')) return;
+  const w = document.createElement('div'); w.className = 'pearl-run'; w.innerHTML = pearl(64);
+  document.body.appendChild(w); setTimeout(() => w.remove(), 3400);
+}
+let pearlTaps = [];
+document.addEventListener('click', (e) => {
+  const p = e.target.closest('svg.pearl'); if (!p || p.closest('.pearl-run')) return;
+  p.classList.remove('hop'); void p.getBoundingClientRect(); p.classList.add('hop');
+  setTimeout(() => p.classList.remove('hop'), 700);
+  const now = Date.now(); pearlTaps = pearlTaps.filter((t) => now - t < 3000); pearlTaps.push(now);
+  if (pearlTaps.length >= 5) { pearlTaps = []; const r = p.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2); pearlSay(p, 'Pearl loves you two! 💕'); return; }
+  const lines = pearlLines(); pearlSay(p, lines[Math.floor(Math.random() * lines.length)]);
+});
+let typed = '';
+document.addEventListener('keydown', (e) => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || e.key.length !== 1) return;
+  typed = (typed + e.key.toLowerCase()).slice(-5);
+  if (typed === 'pearl') { typed = ''; pearlRun(); toast('🌿 Pearl hops by to say hi'); }
+});
+function maybeMilestone() {
+  if (!state.data || state.tab !== 'week') return;
+  const D = derived(); const n = D.daysToGo; if (n === null || n < 0) return;
+  const special = n === 0 || n <= 7 || n % 100 === 0 || n === 365 || n === 30;
+  const key = `wp_milestone_${new Date().toDateString()}`;
+  if (!special || store.get(key)) return;
+  store.set(key, true);
+  setTimeout(() => { burst(window.innerWidth / 2, window.innerHeight / 3, ['🎉', '💍', '✨', '🌿']); pearlRun(); }, 700);
+}
 
 // ---------- boot ----------
 async function boot() {
