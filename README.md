@@ -10,7 +10,7 @@ A small web app on top of our Google Sheet. The sheet is the single source of tr
 - **Tasks:** every task with filters; tap one for details, owner, comments and Claude's note.
 - **Vendors:** booking progress, your vendors (tap to edit), and **Quotes**: compare quotes side by side, shortlist, pass, or book.
 - **Money:** committed / paid meters, budget by category, payments by month, the payment list (mark paid, add a calendar reminder), and the editable budget table.
-- **Guests:** headcount vs. target, A/B-list by side, and the guest list (tap to edit).
+- **Guests:** headcount vs. target, A/B-list by side, and the guest list grouped into parties (partners and +1s together; link, unlink or add a +1 from a guest's panel). Parties live in the Guests sheet's Party column (N): guests with the same label are one party.
 - **Notes:** "Tell Claude", what Claude knows you've decided, wedding details, photo.
 
 ## How it fits together

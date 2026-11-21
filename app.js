@@ -6,7 +6,7 @@ const SID = CONFIG.spreadsheetId;
 const STATUSES = ['Not started', 'In progress', 'Done', 'Skipped'];
 const PHASES = ['12+ months', '9–12 months', '6–9 months', '3–6 months', '2–3 months', '1–2 months', 'Final week', 'After'];
 const RANGES = [
-  'Overview!B4:B7', 'Timeline!A5:J400', 'Budget!A5:G40', 'Guests!A4:M995', 'Vendors!A5:M36',
+  'Overview!B4:B7', 'Timeline!A5:J400', 'Budget!A5:G40', 'Guests!A4:N995', 'Vendors!A5:M36',
   'Comments!A2:E3000', 'Decisions!A2:F3000', 'Quotes!A2:P500', 'Payments!A2:I500', 'Settings!A2:B50',
 ];
 const TABS = [
@@ -158,7 +158,7 @@ function parse(valueRanges) {
     budget,
     guests: Array.from({ length: Math.max(gu.length, 1) }, (_, i) => gu[i] || []).map((r, i) => ({
       row: 4 + i, group: s(r[1]), name: s(r[2]), side: s(r[3]), rel: s(r[4]), contact: s(r[5]), address: s(r[6]),
-      std: s(r[7]), rsvp: s(r[8]), meal: s(r[9]), diet: s(r[10]), table: s(r[11]), thanks: s(r[12]),
+      std: s(r[7]), rsvp: s(r[8]), meal: s(r[9]), diet: s(r[10]), table: s(r[11]), thanks: s(r[12]), party: s(r[13]),
     })),
     vendors: Array.from({ length: 32 }, (_, i) => ve[i] || []).map((r, i) => ({
       row: 5 + i, day: s(r[0]), cat: s(r[1]), vendor: s(r[2]), contact: s(r[3]), phone: s(r[4]), signed: s(r[5]),
@@ -525,6 +525,9 @@ function guestsView(D) {
   const q = state.gq.trim().toLowerCase();
   const rows = g.filter((x) => (!q || `${x.name} ${x.rel} ${x.contact}`.toLowerCase().includes(q)) && (!state.gside || x.side === state.gside)
     && (!state.ggroup || x.group === state.ggroup) && (!state.grsvp || (state.grsvp === 'Pending' ? !['Yes', 'No'].includes(x.rsvp) : x.rsvp === state.grsvp)));
+  const parties = partiesOf(g);
+  const match = new Set(rows.map((x) => x.row));
+  const shown = parties.filter((members) => members.some((m) => match.has(m.row)));
   const max = Math.max(1, ...['Sharon', 'Claire', 'Both'].map((s) => g.filter((x) => x.side === s).length));
   const segRow = (side) => {
     const a = g.filter((x) => x.side === side && x.group !== 'B' && x.group !== 'C').length; const b = g.filter((x) => x.side === side && (x.group === 'B' || x.group === 'C')).length;
@@ -532,7 +535,7 @@ function guestsView(D) {
     return `<div class="seg-row"><span>${side}</span><div class="seg" style="width:${pct(a + b, max)}%">${a ? `<span style="flex:${a};background:var(--data)" data-tip="${side}: ${a} on the A-list">${a}</span>` : ''}${b ? `<span style="flex:${b};background:var(--data-2)" data-tip="${side}: ${b} on the B-list">${b}</span>` : ''}</div><span class="muted" style="text-align:right">${a + b}</span></div>`;
   };
   const sel = (key, label, opts) => `<select class="field search" style="width:auto" data-act="gfilter" data-key="${key}"><option value="">${label}</option>${opts.map((o) => `<option ${state[key] === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
-  return `<div class="page-head"><div><h1>Guests</h1><p>${g.length} invited · ${D.attending} yes · ${D.declined} no · ${g.length - D.attending - D.declined} waiting</p></div><button class="btn primary" data-act="add-guest">+ Add guest</button></div>
+  return `<div class="page-head"><div><h1>Guests</h1><p>${g.length} guests in ${parties.length} parties · ${D.attending} yes · ${D.declined} no · ${g.length - D.attending - D.declined} waiting</p></div><button class="btn primary" data-act="add-guest">+ Add guest</button></div>
     <section class="grid-2">
       <div class="card tile"><div class="label">Headcount vs. target</div><div class="big">${g.length}<small> / ${target || '—'}</small></div>${meter(g.length, target)}<div class="foot">${target && g.length > target ? `<span class="late-text">${g.length - target} over target</span>. Moving people to the B-list brings the A-list down.` : 'Within target.'} A-list only: ${g.filter((x) => x.group !== 'B' && x.group !== 'C').length}.</div></div>
       <div class="card tile"><div class="label">By side</div><div style="margin-top:10px">${segRow('Sharon')}${segRow('Claire')}${segRow('Both')}</div>
@@ -542,9 +545,71 @@ function guestsView(D) {
       <div class="filters"><input class="field search" type="search" placeholder="Search guests" data-act="gsearch" value="${esc(state.gq)}">
         ${sel('gside', 'Both sides', ['Sharon', 'Claire', 'Both'])}${sel('ggroup', 'All groups', ['A', 'B', 'C'])}${sel('grsvp', 'Any RSVP', ['Yes', 'No', 'Pending'])}
         <span class="muted small">${rows.length} shown</span></div>
-      <div class="card list">${rows.length ? rows.map((x) => `<div class="item clickable" data-act="open-guest" data-row="${x.row}"><div class="item-main"><div class="item-title">${esc(x.name)}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
-        <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`).join('') : '<div class="empty">No guests match.</div>'}</div>
+      <datalist id="guest-names">${g.map((x) => `<option value="${esc(x.name)}">`).join('')}</datalist>
+      ${suggestionsHTML(g)}
+      <div class="card list">${shown.length ? shown.map((members) => partyHTML(members)).join('') : '<div class="empty">No guests match.</div>'}</div>
     </section>`;
+}
+
+// Parties: partners and +1s share a label in the Party column (N). No label = a party of one.
+const isPlusOne = (g) => /-\s*guest\??$/i.test(g.name);
+const partyKey = (g) => g.party || `__${g.row}`;
+function partiesOf(guests) {
+  const map = new Map();
+  for (const g of guests) { const k = partyKey(g); if (!map.has(k)) map.set(k, []); map.get(k).push(g); }
+  for (const [k, ms] of map) ms.sort((a, b) => (a.name === k ? -1 : b.name === k ? 1 : 0) || isPlusOne(a) - isPlusOne(b) || a.row - b.row);
+  return [...map.values()];
+}
+function guestRow(x, inParty) {
+  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}"><div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
+    <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`;
+}
+function partyHTML(members) {
+  if (members.length === 1) return guestRow(members[0], false);
+  return `<div class="party"><div class="party-label">Party of ${members.length}</div>${members.map((m) => guestRow(m, true)).join('')}</div>`;
+}
+// Same last name, same side, neither in a party yet -> suggest linking (never automatic).
+const lastName = (n) => n.replace(/\(.*?\)/g, '').replace(/-\s*guest\??$/i, '').trim().split(/\s+/).slice(1).pop() || '';
+function suggestions(guests) {
+  const dismissed = new Set(store.get('wp_dismissed_pairs', []));
+  const groups = new Map();
+  for (const g of guests) {
+    if (g.party) continue; const ln = lastName(g.name).toLowerCase(); if (!ln) continue;
+    const k = `${g.side}|${ln}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(g);
+  }
+  return [...groups.values()].filter((ms) => ms.length > 1).filter((ms) => !dismissed.has(ms.map((m) => m.row).join(',')));
+}
+function suggestionsHTML(guests) {
+  const sug = suggestions(guests); if (!sug.length) return '';
+  return `<div class="card pad suggest"><div class="section-head" style="margin-bottom:6px"><h2>Possible couples or households</h2><span class="hint">Same last name. Link them only if they come together.</span></div>
+    ${sug.slice(0, state.gsugAll ? sug.length : 3).map((ms) => `<div class="suggest-row"><span>${ms.map((m) => esc(m.name)).join(' · ')}</span><span style="display:flex;gap:6px"><button class="btn small" data-act="link-suggest" data-rows="${ms.map((m) => m.row).join(',')}">Link as a party</button><button class="btn small ghost" data-act="dismiss-suggest" data-rows="${ms.map((m) => m.row).join(',')}">Not a party</button></span></div>`).join('')}
+    ${sug.length > 3 ? `<button class="linkbtn" data-act="toggle-sug" style="margin-top:6px">${state.gsugAll ? 'Show fewer' : `Show ${sug.length - 3} more`}</button>` : ''}</div>`;
+}
+function partyWrites(rows) { return rows.map((g) => ({ range: `Guests!N${g.row}`, values: [[asText(g.party || '')]] })); }
+function linkGuests(a, b) {
+  if (!a || !b || a.row === b.row) return;
+  if (a.party && a.party === b.party) { toast('Already in the same party'); return; }
+  const label = b.party || a.party || a.name;
+  const changed = [];
+  for (const g of state.data.guests) if (g.name && (g.row === a.row || g.row === b.row || (a.party && g.party === a.party) || (b.party && g.party === b.party))) { g.party = label; changed.push(g); }
+  render(); save(() => writeCells(partyWrites(changed)), `${a.name} and ${b.name} are now one party`);
+}
+function unlinkGuest(g) {
+  const label = g.party; if (!label) return;
+  g.party = ''; const changed = [g];
+  const rest = state.data.guests.filter((x) => x.name && x.party === label);
+  if (rest.length === 1) { rest[0].party = ''; changed.push(rest[0]); }
+  render(); save(() => writeCells(partyWrites(changed)), `${g.name} unlinked`);
+}
+function addPlusOne(g) {
+  const d = state.data; let slot = d.guests.find((x) => !x.name); if (!slot) { slot = { row: 4 + d.guests.length }; d.guests.push(slot); }
+  if (slot.row > 995) { toast('The guest list is full in the sheet (row 995).', true); return; }
+  const label = g.party || g.name; const writes = [];
+  if (!g.party) { g.party = label; writes.push(...partyWrites([g])); }
+  Object.assign(slot, { group: g.group, name: `${g.name} - Guest`, side: g.side, rel: g.rel, contact: '', address: '', std: '', rsvp: '', meal: '', diet: '', table: '', thanks: '', party: label });
+  const r = slot.row;
+  writes.push({ range: `Guests!A${r}:E${r}`, values: [[`=ROW(B${r})-3`, g.group, asText(slot.name), g.side, asText(g.rel)]] }, { range: `Guests!N${r}`, values: [[asText(label)]] });
+  render(); save(() => writeCells(writes), `Added a +1 for ${g.name}. Rename it once you know who's coming.`);
 }
 
 // ----- Notes -----
@@ -624,7 +689,14 @@ function drawerView() {
   } else if (dr.type === 'guest') {
     const g = d.guests.find((x) => x.row === dr.row); if (!g) return '';
     title = g.name || 'Guest';
-    body = `<div class="form-grid">${GUEST_FIELDS.map((f) => fieldHTML('guests', g, f)).join('')}</div>`;
+    const mates = g.party ? d.guests.filter((x) => x.name && x.party === g.party && x.row !== g.row) : [];
+    body = `<div class="party-box"><div class="group-label" style="margin:0 0 8px">Party</div>
+        ${mates.length ? mates.map((m) => `<div class="mate"><button class="linkbtn" data-act="open-guest" data-row="${m.row}">${esc(m.name)}</button>${isPlusOne(m) ? ' <span class="pill">+1</span>' : ''}<button class="btn small ghost" data-act="unlink" data-row="${m.row}">Unlink</button></div>`).join('') : '<p class="muted small" style="margin:0 0 8px">Coming solo. Link a partner, or add a +1.</p>'}
+        <form data-form="link" data-row="${g.row}" class="link-form"><input class="field" name="other" list="guest-names-drawer" placeholder="Link with a guest…" required><button class="btn small" type="submit">Link</button></form>
+        <datalist id="guest-names-drawer">${d.guests.filter((x) => x.name && x.row !== g.row && (!g.party || x.party !== g.party)).map((x) => `<option value="${esc(x.name)}">`).join('')}</datalist>
+        ${isPlusOne(g) ? '' : `<button class="btn small" data-act="add-plus1" data-row="${g.row}" style="margin-top:8px">+ Add a +1</button>`}
+      </div>
+      <div class="form-grid">${GUEST_FIELDS.map((f) => fieldHTML('guests', g, f)).join('')}</div>`;
     foot = `<button class="btn ghost small" data-act="remove-row" data-sheet="guests" data-row="${g.row}">Remove guest</button>`;
   }
   return `<div class="overlay" data-act="close-drawer"></div><aside class="drawer" role="dialog" aria-label="${esc(title)}">
@@ -660,7 +732,8 @@ function modalView() {
   if (m.type === 'add-guest') return wrap('Add a guest', `<div class="form-grid"><label class="f full">Name<input class="field" name="name" required autofocus></label>
       <label class="f">Side<select class="field" name="side"><option>Sharon</option><option>Claire</option><option>Both</option></select></label>
       <label class="f">Group<select class="field" name="group"><option>A</option><option>B</option><option>C</option></select></label>
-      <label class="f full">Relationship<input class="field" name="rel"></label></div>`, 'add-guest');
+      <label class="f full">Relationship<input class="field" name="rel"></label>
+      <label class="f full">Partner of (optional)<input class="field" name="partner" list="guest-names" placeholder="Start typing a guest's name"></label></div>`, 'add-guest');
   if (m.type === 'add-payment') {
     const names = [...new Set(d.vendors.map((v) => v.vendor).filter(Boolean))];
     return wrap('Add a payment', `<div class="form-grid"><label class="f full">Vendor<input class="field" name="vendor" list="vendor-names" required autofocus></label><datalist id="vendor-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -785,6 +858,14 @@ app.addEventListener('click', (e) => {
   if (act === 'tab') { state.tab = el.dataset.tab; state.drawer = null; store.set('wp_tab2', state.tab); render(); window.scrollTo(0, 0); }
   else if (act === 'filter') { state.filter = el.dataset.f; render(); }
   else if (act === 'vtab') { state.vtab = el.dataset.v; render(); }
+  else if (act === 'toggle-sug') { state.gsugAll = !state.gsugAll; render(); }
+  else if (act === 'unlink') { const g = d.guests.find((x) => x.row === Number(el.dataset.row)); if (g) unlinkGuest(g); }
+  else if (act === 'add-plus1') { const g = d.guests.find((x) => x.row === Number(el.dataset.row)); if (g) addPlusOne(g); }
+  else if (act === 'link-suggest') {
+    const rows = el.dataset.rows.split(',').map(Number); const ms = d.guests.filter((x) => rows.includes(x.row));
+    const label = ms[0].name; ms.forEach((m) => { m.party = label; }); render();
+    save(() => writeCells(partyWrites(ms)), `Linked ${ms.map((m) => m.name).join(' & ')}`);
+  } else if (act === 'dismiss-suggest') { store.set('wp_dismissed_pairs', [...store.get('wp_dismissed_pairs', []), el.dataset.rows]); render(); }
   else if (act === 'toggle-budget') { const r = Number(el.dataset.row); state.openBudget = state.openBudget === r ? null : r; render(); }
   else if (act === 'signin' || act === 'reconnect') signIn('');
   else if (act === 'switch-me') { state.me = null; store.del('wp_me'); render(); }
@@ -858,6 +939,12 @@ app.addEventListener('submit', (e) => {
   } else if (kind === 'add-task') addTask(fd);
   else if (kind === 'add-vendor') addVendor(fd);
   else if (kind === 'add-guest') addGuest(fd);
+  else if (kind === 'link') {
+    const g = d.guests.find((x) => x.row === Number(form.dataset.row));
+    const other = d.guests.find((x) => x.name && x.name.toLowerCase() === String(fd.other || '').trim().toLowerCase());
+    if (!other) { toast('Pick a name from the guest list', true); return; }
+    linkGuests(g, other);
+  }
   else if (kind === 'add-payment') addPayment(fd);
   else if (kind === 'book') bookQuote(fd);
 });
@@ -919,7 +1006,11 @@ function addGuest(fd) {
   if (slot.row > 995) { toast('The guest list is full in the sheet (row 995).', true); return; }
   Object.assign(slot, { group: fd.group, name: fd.name.trim(), side: fd.side, rel: (fd.rel || '').trim(), contact: '', address: '', std: '', rsvp: '', meal: '', diet: '', table: '', thanks: '' });
   const r = slot.row; state.modal = null; render();
-  save(() => writeCells([{ range: `Guests!A${r}:E${r}`, values: [[`=ROW(B${r})-3`, fd.group, asText(slot.name), fd.side, asText(slot.rel)]] }]), 'Guest added');
+  const partner = fd.partner ? d.guests.find((x) => x.name && x.row !== r && x.name.toLowerCase() === fd.partner.trim().toLowerCase()) : null;
+  const writes = [{ range: `Guests!A${r}:E${r}`, values: [[`=ROW(B${r})-3`, fd.group, asText(slot.name), fd.side, asText(slot.rel)]] }];
+  slot.party = '';
+  if (partner) { const label = partner.party || partner.name; partner.party = label; slot.party = label; writes.push(...partyWrites([partner, slot])); }
+  render(); save(() => writeCells(writes), partner ? `Guest added and linked with ${partner.name}` : 'Guest added');
 }
 function removeRow(sheet, row) {
   const r = state.data[sheet].find((x) => x.row === row); if (!r) return;
@@ -927,8 +1018,12 @@ function removeRow(sheet, row) {
   if (!confirm(`Remove ${label || 'this row'}? This clears the row in the sheet.`)) return;
   state.drawer = null;
   if (sheet === 'guests') {
-    Object.assign(r, { group: '', name: '', side: '', rel: '', contact: '', address: '', std: '', rsvp: '', meal: '', diet: '', table: '', thanks: '' }); render();
-    save(() => writeCells([{ range: `Guests!B${row}:M${row}`, values: [Array(12).fill('')] }]), 'Guest removed');
+    const label = r.party;
+    Object.assign(r, { group: '', name: '', side: '', rel: '', contact: '', address: '', std: '', rsvp: '', meal: '', diet: '', table: '', thanks: '', party: '' });
+    const writes = [{ range: `Guests!B${row}:N${row}`, values: [Array(13).fill('')] }];
+    const rest = label ? state.data.guests.filter((x) => x.name && x.party === label) : [];
+    if (rest.length === 1) { rest[0].party = ''; writes.push(...partyWrites(rest)); }
+    render(); save(() => writeCells(writes), 'Guest removed');
   } else {
     Object.assign(r, { vendor: '', contact: '', phone: '', signed: '', total: '', deposit: '', other: '', due: '', arrival: '', notes: '' }); render();
     save(() => writeCells([{ range: `Vendors!C${row}:I${row}`, values: [Array(7).fill('')] }, { range: `Vendors!K${row}:M${row}`, values: [Array(3).fill('')] }]), 'Vendor cleared');

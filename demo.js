@@ -24,6 +24,11 @@ export function demoValueRanges() {
   const last = ['Brooks', 'Lee', 'Rivera', 'Kim', 'Patel', 'Nguyen', 'Chen', 'Adams'];
   const guests = Array.from({ length: 48 }, (_, i) => [i + 1, i % 6 === 5 ? 'B' : 'A', `${first[i % first.length]} ${last[i % last.length]}`, i % 3 === 0 ? 'Sharon' : 'Claire',
     ['College', 'Family', 'Work', 'Denver friends'][i % 4], '', i % 4 === 0 ? '123 Example St' : '', '', i < 5 ? 'Yes' : i === 5 ? 'No' : '', '', '', '', '']);
+  // sample parties: a couple, a +1, and a same-surname pair left unlinked (shows as a suggestion)
+  guests[1][2] = 'Jordan Lee (Avery)'; guests[0].push('Avery Brooks'); guests[1].push('Avery Brooks');
+  guests[3][2] = 'Taylor Kim - Guest'; guests[2][2] = 'Taylor Kim'; guests[2].push('Taylor Kim'); guests[3].push('Taylor Kim');
+  guests[3][3] = guests[2][3];
+  guests[7][2] = 'Quinn Adams'; guests[10][2] = 'Skyler Adams'; guests[7][3] = 'Claire'; guests[10][3] = 'Claire';
   const vendors = [
     ['Friday', 'Welcome dinner (restaurant)', '', '', '', '', '', '', '', '', '', '', ''],
     ['Saturday', 'Venue', 'Example Barn', 'Alex', 'alex@example.com', 'Yes', 9000, 2500, 0, '', wedding - 60, 0.4167, 'Includes tables and chairs'],
