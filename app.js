@@ -37,9 +37,12 @@ const PEARL = `<g class="p-ear p-ear-l"><path d="M22 14C13 30 17 45 31 49l9-19Z"
 const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls} ${isNight() ? 'sleepy' : ''}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
 // Pearl's phrases. Editable on the Notes tab (saved to the Settings sheet). Placeholders: {days} {overdue} {name}
 const DEFAULT_PEARL_TAP = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?',
-  'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋'];
+  'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋',
+  'Claire: mom.', 'ESQUEEZIE!!', 'Cake?'];
 const DEFAULT_PEARL_CHEER = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
 function fillPhrase(line) {
+  const who = line.match(/^(Sharon|Claire)\s*:\s*/i); // "Claire: mom." is only said to Claire
+  if (who) { if (!state.me || state.me.toLowerCase() !== who[1].toLowerCase()) return null; line = line.slice(who[0].length); }
   const D = state.data ? derived() : null;
   if (line.includes('{days}') && !(D && D.daysToGo > 0)) return null;
   if (line.includes('{overdue}') && !(D && D.overdue.length)) return null;
@@ -676,7 +679,7 @@ function notesView() {
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn small" data-act="pick-photo">${d.photo ? 'Change photo' : 'Add photo'}</button><a class="btn small" href="${CONFIG.quotesFolder}" target="_blank" rel="noopener">Quotes folder ↗</a></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Pearl's phrases</h2><button class="linkbtn" data-act="reset-pearl">Reset to defaults</button></div>
-      <div class="card pad"><p class="muted small" style="margin:0 0 12px">One phrase per line. Use <code class="inline">{days}</code>, <code class="inline">{overdue}</code> or <code class="inline">{name}</code> and Pearl fills them in (a phrase is skipped when its blank doesn't apply, like {overdue} when nothing is late). Changes save when you click away.</p>
+      <div class="card pad"><p class="muted small" style="margin:0 0 12px">One phrase per line. Use <code class="inline">{days}</code>, <code class="inline">{overdue}</code> or <code class="inline">{name}</code> and Pearl fills them in (a phrase is skipped when its blank doesn't apply, like {overdue} when nothing is late). Start a line with <code class="inline">Claire:</code> or <code class="inline">Sharon:</code> to say it only to that person. Changes save when you click away.</p>
         <div class="grid-2" style="gap:16px">
           <label class="f">When you tap Pearl<textarea class="field phrases" id="pearl-tap" data-act="pearl-phrases" data-key="pearlTap" rows="11">${esc(phraseList('pearlTap', DEFAULT_PEARL_TAP).join('\n'))}</textarea></label>
           <label class="f">When you check off a task<textarea class="field phrases" id="pearl-cheer" data-act="pearl-phrases" data-key="pearlCheer" rows="11">${esc(phraseList('pearlCheer', DEFAULT_PEARL_CHEER).join('\n'))}</textarea></label>
