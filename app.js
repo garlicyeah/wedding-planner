@@ -35,7 +35,20 @@ const PEARL = `<g class="p-ear p-ear-l"><path d="M22 14C13 30 17 45 31 49l9-19Z"
 <path d="M47.5 65.5q2.5 2 5 0" stroke="#3a2a2a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
 <path d="M25 69q25 11 50 0l-6 9q-19 22-38 0Z" fill="#6b9fd6"/><path d="M50 83l-6 12 6-3.5 6 3.5Z" fill="#5a8cc2"/>`;
 const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls} ${isNight() ? 'sleepy' : ''}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
-const PEARL_CHEERS = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
+// Pearl's phrases. Editable on the Notes tab (saved to the Settings sheet). Placeholders: {days} {overdue} {name}
+const DEFAULT_PEARL_TAP = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?',
+  'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋'];
+const DEFAULT_PEARL_CHEER = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
+function fillPhrase(line) {
+  const D = state.data ? derived() : null;
+  if (line.includes('{days}') && !(D && D.daysToGo > 0)) return null;
+  if (line.includes('{overdue}') && !(D && D.overdue.length)) return null;
+  if (line.includes('{name}') && !state.me) return null;
+  return line.replace(/\{days\}/g, D ? D.daysToGo : '').replace(/\{overdue\}/g, D ? plural(D.overdue.length, 'task') : '').replace(/\{name\}/g, state.me || '');
+}
+const phraseList = (key, defaults) => { const raw = state.data?.[key]; const lines = (typeof raw === 'string' && raw.trim() ? raw.split('\n') : defaults).map((l) => l.trim()).filter(Boolean); return lines.length ? lines : defaults; };
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+function pearlCheer() { return pick(phraseList('pearlCheer', DEFAULT_PEARL_CHEER).map(fillPhrase).filter(Boolean)) || 'Done!'; }
 function isNight() { const h = new Date().getHours(); return h >= 23 || h < 5; }
 function pearlLine(D) {
   if (D.daysToGo === 0) return "Today's the day!! Pearl is so happy for you 💍";
@@ -181,6 +194,7 @@ function parse(valueRanges) {
       row: 2 + i, vendor: s(r[0]), cat: s(r[1]), what: s(r[2]), amount: r[3], due: r[4], status: s(r[5]) || 'Planned', paidOn: r[6], notes: s(r[7]), quoteId: s(r[8]),
     })).filter((p) => p.vendor || isNum(p.amount)),
     photo,
+    pearlTap: setting('pearl_tap'), pearlCheer: setting('pearl_cheer'),
     photoX: isNum(setting('photo_x')) ? setting('photo_x') : 50,
     photoY: isNum(setting('photo_y')) ? setting('photo_y') : 40,
   };
@@ -201,14 +215,20 @@ const state = {
 };
 
 // ---------- feedback ----------
-let toastTimer;
-function toast(msg, err = false) {
+let toastTimer; let toastLockedUntil = 0;
+function toast(msg, err = false, action = null) {
+  if (!err && !action && Date.now() < toastLockedUntil) return; // keep an Undo toast visible
   const el = document.getElementById('toast');
-  el.textContent = msg; el.className = 'show' + (err ? ' err' : '');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.className = ''; }, err ? 6000 : 1600);
+  el.innerHTML = `<span>${esc(msg)}</span>${action ? '<button type="button" class="toast-act">' + esc(action.label) + '</button>' : ''}`;
+  el.className = 'show' + (err ? ' err' : '') + (action ? ' has-act' : '');
+  const ms = err ? 6000 : action ? 5000 : 1600;
+  toastLockedUntil = action ? Date.now() + ms : 0;
+  if (action) el.querySelector('.toast-act').onclick = () => { toastLockedUntil = 0; el.className = ''; action.fn(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.className = ''; toastLockedUntil = 0; }, ms);
 }
+const undoToast = (msg, fn) => toast(msg, false, { label: 'Undo', fn });
 function handleError(e) {
-  if (e instanceof AuthError) { if (!state.data) state.signedIn = false; else state.authExpired = true; render(); toast('Please reconnect to Google', true); }
+  if (e instanceof AuthError) { if (!state.data) state.signedIn = false; else state.authExpired = true; render(); toast('Reconnecting to Google on your next tap…'); }
   else { console.error(e); toast(e.message || 'Something went wrong', true); }
 }
 async function save(fn, msg = 'Saved') {
@@ -225,6 +245,17 @@ async function refresh() {
 }
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 60000);
 window.addEventListener('focus', () => refresh());
+
+// Google tokens last an hour. Refresh them quietly on the next tap (a user gesture, so the sign-in popup is allowed).
+let reconnecting = false;
+document.addEventListener('click', () => {
+  if (DEMO || reconnecting || !tokenClient || !state.signedIn) return;
+  const soon = token && token.exp - Date.now() < 5 * 60 * 1000;
+  if (!state.authExpired && !soon) return;
+  reconnecting = true;
+  requestToken('').then(() => { const was = state.authExpired; state.authExpired = false; if (was) { load().then(render).catch(handleError); } })
+    .catch(() => { /* banner stays as a fallback */ }).finally(() => { reconnecting = false; });
+}, true);
 
 // ---------- derived ----------
 function derived() {
@@ -285,7 +316,7 @@ function render() {
     <aside class="sidebar">
       <div class="couple">${avatar}<div><div class="couple-name">Sharon &amp; Claire</div><div class="couple-sub">${D.daysToGo !== null ? `${D.daysToGo} days to go` : ''}</div></div></div>
       <nav class="nav">${nav('nav', 0)}</nav>
-      <div class="side-foot"><div class="side-pearl">${pearl(40)}<span>${esc(pearlLine(D))}</span></div><span>Signed in as <b>${esc(state.me || '—')}</b></span><button class="linkbtn" data-act="switch-me">Switch person</button></div>
+      <div class="side-foot"><div class="side-pearl">${pearl(40)}<span class="muted small">Tap Pearl 🌿</span></div><span>Signed in as <b>${esc(state.me || '—')}</b></span><button class="linkbtn" data-act="switch-me">Switch person</button></div>
     </aside>
     <div>
       <div class="mobile-top">${avatar}<div class="couple-name">Sharon &amp; Claire</div><span class="me muted">${esc(state.me || '')} · <button class="linkbtn" data-act="switch-me">switch</button></span></div>
@@ -319,13 +350,17 @@ function weekView(D) {
   const upcoming = D.payments.filter((p) => p.status !== 'Paid').sort((a, b) => n0(a.due) - n0(b.due)).slice(0, 4);
   const target = n0(o.targetGuests);
   return `
-    <div class="page-head"><div><h1>This week</h1><p>${today}. Here's what matters now.</p></div></div>
+    <div class="page-head"><div><div class="eyebrow">${today}</div><h1>This week</h1></div></div>
     <section class="hero2">
       <div class="hero-card">
         <div><div class="hero-days">${D.daysToGo ?? '—'}<span> days</span></div>
         <div class="hero-sub">until ${fmtDate(o.weddingDate) || 'the wedding'}${o.venue ? ` · ${esc(o.venue)}` : ''}</div></div>
-        ${focus[0] ? `<button class="next-up" data-act="open-task" data-id="${esc(focus[0].id)}"><span class="muted small">Next up</span><span class="next-title">${esc(focus[0].name)}</span><span class="small ${focus[0].overdue ? 'late-text' : 'muted'}">${focus[0].overdue ? `${plural(-focus[0].left, 'day')} late` : `Due ${shortDate(focus[0].due)}`}</span></button>` : ''}
-        <div class="hero-pearl">${pearl(46)}<span>${esc(pearlLine(D))}</span></div>
+        <div class="hero-stats">
+          <button class="hstat" data-act="tab" data-tab="tasks"><span class="hstat-label">Tasks done</span><span class="hstat-val">${D.done.length}<small> / ${d.tasks.length}</small></span>${meter(D.done.length, d.tasks.length, { cls: 'done' })}<span class="hstat-foot">${D.overdue.length ? `<span class="late-text">${D.overdue.length} overdue</span>` : `${D.soon.length} due this month`}</span></button>
+          <button class="hstat" data-act="tab" data-tab="money"><span class="hstat-label">Vendors booked</span><span class="hstat-val">${money(D.committed)}</span>${meter(D.committed, n0(o.budget))}<span class="hstat-foot">of ${money(o.budget)} budget</span></button>
+          <button class="hstat" data-act="tab" data-tab="guests"><span class="hstat-label">Guests</span><span class="hstat-val">${D.guests.length}<small> / ${target || '—'}</small></span>${meter(D.guests.length, target)}<span class="hstat-foot">${target && D.guests.length > target ? `<span class="late-text">${D.guests.length - target} over target</span>` : `${D.attending} said yes`}</span></button>
+        </div>
+        <div class="hero-pearl">${pearl(42)}<span>${esc(pearlLine(D))}</span></div>
       </div>
       <div class="hero-photo ${d.photo ? '' : 'empty'}">
         ${d.photo ? `<img src="data:image/jpeg;base64,${d.photo}" alt="Sharon and Claire" style="object-position:${d.photoX}% ${d.photoY}%">` : `<button class="hero-empty" data-act="pick-photo">${pearl(72)}<span>Add a photo of you two</span></button>`}
@@ -333,15 +368,9 @@ function weekView(D) {
       </div>
     </section>
 
-    <section class="grid-3" style="margin-top:12px">
-      <div class="card tile"><div class="label">Tasks done</div><div class="big">${D.done.length}<small> / ${d.tasks.length}</small></div>${meter(D.done.length, d.tasks.length, { cls: 'done' })}<div class="foot">${D.overdue.length ? `<span class="late-text">${D.overdue.length} overdue</span> · ` : ''}${D.soon.length} due in 30 days</div></div>
-      <div class="card tile"><div class="label">Committed to vendors</div><div class="big">${money(D.committed)}<small> / ${money(o.budget)}</small></div>${meter(D.committed, n0(o.budget))}<div class="foot">${money(D.paid)} paid so far</div></div>
-      <div class="card tile"><div class="label">Guests</div><div class="big">${D.guests.length}<small> / ${target || '—'} target</small></div>${meter(D.guests.length, target)}<div class="foot">${target && D.guests.length > target ? `<span class="late-text">${D.guests.length - target} over target</span>` : `${D.attending} said yes`}</div></div>
-    </section>
-
     <section class="section">
       <div class="section-head"><h2>Focus</h2><button class="linkbtn" data-act="tab" data-tab="tasks">All tasks</button></div>
-      <div class="card list">${focus.length ? focus.map((t) => taskItem(t)).join('') : `<div class="empty">${pearl(64)}<div>Nothing urgent. Pearl says enjoy the week.</div></div>`}</div>
+      <div class="card list">${focus.length ? focus.map((t) => taskItem(t, { showNote: true })).join('') : `<div class="empty">${pearl(64)}<div>Nothing urgent. Pearl says enjoy the week.</div></div>`}</div>
     </section>
 
     <section class="grid-2 section">
@@ -368,15 +397,19 @@ function workloadChart(D) {
   }
   return columns(bars) + `<div class="legend"><span><i style="background:var(--data)"></i>Due that month</span>${D.overdue.length ? '<span><i style="background:var(--late)"></i>Overdue</span>' : ''}</div>`;
 }
-function taskItem(t, { showNote = true } = {}) {
+function ownerPick(t) {
+  const opt = (v, ini) => `<button type="button" class="opick ${v} ${t.owner === v ? 'on' : ''}" data-act="set-owner" data-id="${esc(t.id)}" data-v="${v}" aria-pressed="${t.owner === v}" title="${t.owner === v ? 'Tap again to clear' : `Assign to ${v}`}"><span class="full">${v}</span><span class="ini">${ini}</span></button>`;
+  return `<div class="owner-pick" role="group" aria-label="Owner">${opt('Sharon', 'S')}${opt('Claire', 'C')}${opt('Both', 'S+C')}</div>`;
+}
+function taskItem(t, { showNote = false } = {}) {
   const n = commentsFor(t.id).length;
-  return `<div class="item clickable ${t.closed ? 'done' : ''}" data-act="open-task" data-id="${esc(t.id)}">
-    <button class="check ${t.status === 'Done' ? 'on' : ''}" data-act="toggle-done" data-id="${esc(t.id)}" aria-label="Mark done"></button>
-    <div class="item-main"><div class="item-title">${esc(t.name)}</div>
-      <div class="item-meta">${dueText(t)}${t.status === 'In progress' ? ' · in progress' : ''}${n ? ` · ${plural(n, 'comment')}` : ''}</div>
+  return `<div class="item clickable ${t.closed ? 'done' : ''}" data-act="open-task" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="${esc(t.name)}, open details">
+    <button class="check ${t.status === 'Done' ? 'on' : ''}" data-act="toggle-done" data-id="${esc(t.id)}" aria-label="${t.status === 'Done' ? 'Mark not done' : 'Mark done'}"></button>
+    <div class="item-main"><div class="item-title">${esc(t.name)}${t.claude && !showNote ? ' <span class="note-dot" title="Claude has a note">✦</span>' : ''}</div>
+      <div class="item-meta">${dueText(t)}${t.status === 'In progress' ? ' · <span class="pill data">In progress</span>' : ''}${n ? ` · ${plural(n, 'comment')}` : ''}</div>
       ${showNote && t.claude ? `<div class="note"><span>${esc(t.claude)}<button class="gotit" data-act="gotit" data-id="${esc(t.id)}">Got it</button></span></div>` : ''}
     </div>
-    <div class="item-side"><span class="who ${esc(t.owner)}">${esc(t.owner || 'No owner')}</span></div>
+    <div class="item-side">${t.closed ? `<span class="who ${esc(t.owner)}">${esc(t.owner || '')}</span>` : ownerPick(t)}</div>
   </div>`;
 }
 function paymentItem(p) {
@@ -412,9 +445,9 @@ function tasksView() {
       + PHASES.map((p) => block(p, rest.filter((t) => t.phase === p))).join('') + block('Other', rest.filter((t) => !PHASES.includes(t.phase)))
       + block('Done & skipped', list.filter((t) => t.closed));
   }
-  return `<div class="page-head"><div><h1>Tasks</h1><p>Tap a task to see details, comments and Claude's note.</p></div><button class="btn primary" data-act="add-task">+ Add task</button></div>
-    <div class="filters">${FILTERS.map(([k, l, fn]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${l}<span class="n">${state.data.tasks.filter(fn).length}</span></button>`).join('')}
-      <input class="field search" type="search" placeholder="Search" data-act="search" value="${esc(state.search)}"></div>
+  return `<div class="page-head"><div><h1>Tasks</h1></div><button class="btn primary" data-act="add-task">+ Add task</button></div>
+    <div class="toolbar"><input class="field search" type="search" placeholder="Search tasks" aria-label="Search tasks" data-act="search" value="${esc(state.search)}">
+      <div class="chip-row">${FILTERS.map(([k, l, fn]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${l}<span class="n">${state.data.tasks.filter(fn).length}</span></button>`).join('')}</div></div>
     ${body}`;
 }
 
@@ -434,13 +467,13 @@ function bookingState(v) {
   return ['', 'Not started'];
 }
 function bookedView(D) {
-  const named = D.vendors.filter((v) => v.vendor);
-  return `<section><div class="section-head"><h2>Booking progress</h2><span class="hint">${D.vendors.filter((v) => v.signed === 'Yes').length} of ${D.vendors.length} booked</span></div>
-      <div class="bgrid">${D.vendors.map((v) => { const [cls, label] = bookingState(v); return `<button class="bcell ${cls}" style="text-align:left" data-act="open-vendor" data-row="${v.row}"><div>${esc(v.cat || 'Vendor')}${v.day && v.day !== 'Saturday' ? ` <span class="muted small">${esc(v.day)}</span>` : ''}</div><div class="state">${cls === 'booked' ? '✓ ' : ''}${label}${v.vendor ? ` · ${esc(v.vendor)}` : ''}</div></button>`; }).join('')}</div>
-      <div class="legend"><span><i style="background:var(--good)"></i>Booked (contract signed)</span><span><i style="background:var(--data)"></i>Quoted or in talks</span><span><i style="background:var(--line)"></i>Not started</span></div></section>
-    <section class="section"><div class="section-head"><h2>Your vendors</h2><span class="hint">Tap to edit contact, cost and payments</span></div>
-      <div class="card list">${named.length ? named.map((v) => `<div class="item clickable" data-act="open-vendor" data-row="${v.row}"><div class="item-main"><div class="item-title">${esc(v.vendor)}</div><div class="item-meta">${esc(v.cat)}${v.day ? ` · ${esc(v.day)}` : ''}${v.contact ? ` · ${esc(v.contact)}` : ''}</div></div>
-        <div class="item-side"><span style="font-variant-numeric:tabular-nums">${isNum(v.total) ? money(v.total) : ''}</span><span class="pill ${v.signed === 'Yes' ? 'good' : ''}">${v.signed === 'Yes' ? 'Signed' : v.signed || 'Not signed'}</span></div></div>`).join('') : '<div class="empty">No vendors yet. Book one from Quotes, or tap “Add vendor”.</div>'}</div></section>`;
+  const booked = D.vendors.filter((v) => v.signed === 'Yes').length;
+  return `<section><div class="section-head"><h2>Booking progress</h2><span class="hint">${booked} of ${D.vendors.length} booked · tap one to edit</span></div>
+      <div class="bgrid">${D.vendors.map((v) => { const [cls, label] = bookingState(v); return `<button class="bcell ${cls}" data-act="open-vendor" data-row="${v.row}">
+        <span class="bcell-top"><span>${esc(v.cat || 'Vendor')}</span>${v.day && v.day !== 'Saturday' ? `<span class="muted small">${esc(v.day)}</span>` : ''}</span>
+        <span class="bcell-vendor">${v.vendor ? esc(v.vendor) : '<span class="muted">No vendor yet</span>'}</span>
+        <span class="bcell-foot"><span class="state">${cls === 'booked' ? '✓ ' : ''}${label}</span>${isNum(v.total) ? `<span class="tnum">${money(v.total)}</span>` : ''}</span></button>`; }).join('')}</div>
+      <div class="legend"><span><i style="background:var(--good)"></i>Booked (contract signed)</span><span><i style="background:var(--data)"></i>Quoted or in talks</span><span><i style="background:var(--line-strong)"></i>Not started</span></div></section>`;
 }
 function quotesView() {
   const qs = state.data.quotes;
@@ -462,11 +495,13 @@ function quoteCard(q) {
     ${q.summary ? `<div class="summary">✦ ${esc(q.summary)}</div>` : ''}
     ${q.included ? `<div class="small muted">${esc(q.included.slice(0, 140))}${q.included.length > 140 ? '…' : ''}</div>` : ''}
     <div class="actions">
-      <label class="chip" style="cursor:pointer"><input type="checkbox" data-act="compare" data-id="${esc(q.id)}" ${state.compare.has(q.id) ? 'checked' : ''} style="margin:0 6px 0 0;vertical-align:-1px">Compare</label>
-      ${q.status !== 'Booked' ? `<button class="chip" data-act="quote-status" data-id="${esc(q.id)}" data-v="${q.status === 'Shortlisted' ? 'New' : 'Shortlisted'}">${q.status === 'Shortlisted' ? 'Unshortlist' : 'Shortlist'}</button>
-      <button class="chip" data-act="quote-status" data-id="${esc(q.id)}" data-v="${q.status === 'Passed' ? 'New' : 'Passed'}">${q.status === 'Passed' ? 'Undo pass' : 'Pass'}</button>
-      <button class="chip" data-act="book" data-id="${esc(q.id)}">Book</button>` : ''}
-      ${q.link ? `<a class="chip" href="${esc(q.link)}" target="_blank" rel="noopener">File ↗</a>` : ''}
+      ${q.status !== 'Booked' ? `<button class="btn primary small" data-act="book" data-id="${esc(q.id)}">Book</button>` : ''}
+      <label class="compare-check"><input type="checkbox" data-act="compare" data-id="${esc(q.id)}" ${state.compare.has(q.id) ? 'checked' : ''}> Compare</label>
+      ${q.status !== 'Booked' || q.link ? `<details class="more"><summary class="btn small ghost" aria-label="More actions">⋯</summary><div class="more-menu">
+        ${q.status !== 'Booked' ? `<button data-act="quote-status" data-id="${esc(q.id)}" data-v="${q.status === 'Shortlisted' ? 'New' : 'Shortlisted'}">${q.status === 'Shortlisted' ? 'Remove from shortlist' : 'Shortlist'}</button>
+        <button data-act="quote-status" data-id="${esc(q.id)}" data-v="${q.status === 'Passed' ? 'New' : 'Passed'}">${q.status === 'Passed' ? 'Undo pass' : 'Pass on this quote'}</button>` : ''}
+        ${q.link ? `<a href="${esc(q.link)}" target="_blank" rel="noopener">Open the quote file ↗</a>` : ''}
+      </div></details>` : ''}
     </div></div>`;
 }
 
@@ -476,29 +511,29 @@ function budgetMeter(est, act, planned) {
   return `<div class="meter bmeter">${est ? `<i class="est ${over ? 'late' : ''}" style="width:${pct(est, base)}%"></i>` : ''}${act ? `<i class="${over && act > planned ? 'late' : ''}" style="width:${pct(act, base)}%"></i>` : ''}${over ? `<b class="plan-mark" style="left:${pct(planned, base)}%"></b>` : ''}</div>`;
 }
 function budgetSummary(b, total) {
-  const p = n0(b.pct) * total; const est = n0(b.est); const act = n0(b.act); const top = Math.max(est, act);
-  return `<span class="bname">${esc(b.cat)}<span class="muted small"> · ${isNum(b.pct) ? `${+(b.pct * 100).toFixed(2)}%` : '—'}</span></span>${budgetMeter(est, act, p)}
-    <span class="fig">${top ? `<b class="${top > p ? 'late-text' : ''}">${money(top)}</b> of ` : ''}${money(p)}${act ? `<span class="muted small"> · ${money(act)} spent</span>` : ''}</span><span class="chev" aria-hidden="true">›</span>`;
+  const p = n0(b.pct) * total; const exp = n0(b.est); const paid = n0(b.act); const top = Math.max(exp, paid);
+  return `<span class="bname">${esc(b.cat)}</span>${budgetMeter(exp, paid, p)}
+    <span class="fig">${top ? `<b class="${top > p ? 'late-text' : ''}">${money(top)}</b> of ` : ''}<span class="tnum">${money(p)}</span>${paid ? `<span class="muted small"> · ${money(paid)} paid</span>` : ''}</span><span class="chev" aria-hidden="true">›</span>`;
 }
 function budgetItem(b, total) {
-  const open = state.openBudget === b.row;
-  const f = (k, label, val, extra = '') => `<label class="f">${label}<input class="field" data-act="budget" data-row="${b.row}" data-k="${k}" value="${val}" ${extra}></label>`;
+  const open = state.openBudget === b.row; const p = n0(b.pct) * total;
+  const f = (k, label, val, extra = '') => `<label class="f">${label}<input class="field" id="b-${k}-${b.row}" data-act="budget" data-row="${b.row}" data-k="${k}" value="${val}" ${extra}></label>`;
   return `<div class="bitem ${open ? 'open' : ''}">
-    <button class="brow" data-act="toggle-budget" data-row="${b.row}" aria-expanded="${open}" data-brow="${b.row}" data-tip="${esc(`${b.cat}: planned ${money(n0(b.pct) * total)}, estimated ${money(n0(b.est))}, spent ${money(n0(b.act))}`)}">${budgetSummary(b, total)}</button>
+    <button class="brow" data-act="toggle-budget" data-row="${b.row}" aria-expanded="${open}" data-brow="${b.row}" data-tip="${esc(`${b.cat}: budget ${money(p)}, expected ${money(n0(b.est))}, paid ${money(n0(b.act))}`)}">${budgetSummary(b, total)}</button>
     ${open ? `<div class="bedit">
       ${f('cat', 'Category', esc(b.cat))}
-      ${f('pct', '% of budget', isNum(b.pct) ? +(b.pct * 100).toFixed(2) : '', 'inputmode="decimal"')}
-      <label class="f">Planned<div class="field ro-field" data-planned="${b.row}">${money(n0(b.pct) * total)}</div></label>
-      ${f('est', 'Estimated / quoted ($)', isNum(b.est) ? b.est : '', 'inputmode="decimal"')}
-      ${f('act', 'Actual spent ($)', isNum(b.act) ? b.act : '', 'inputmode="decimal"')}
-      <label class="f wide">Notes<input class="field" data-act="budget" data-row="${b.row}" data-k="notes" value="${esc(b.notes)}"></label>
+      ${f('plan', 'Budget ($)', isNum(b.pct) ? Math.round(p) : '', 'inputmode="decimal"')}
+      <label class="f">Share of total<div class="field ro-field" data-planned="${b.row}">${isNum(b.pct) ? `${+(b.pct * 100).toFixed(1)}%` : '—'}</div></label>
+      ${f('est', 'Expected cost ($)', isNum(b.est) ? b.est : '', 'inputmode="decimal" placeholder="Quote or contract"')}
+      ${f('act', 'Paid so far ($)', isNum(b.act) ? b.act : '', 'inputmode="decimal"')}
+      <label class="f wide">Notes<input class="field" id="b-notes-${b.row}" data-act="budget" data-row="${b.row}" data-k="notes" value="${esc(b.notes)}"></label>
       <div class="wide bedit-foot"><button class="btn small ghost danger" data-act="delete-budget" data-row="${b.row}">Delete category</button></div>
     </div>` : ''}</div>`;
 }
 function budgetTotal(splits, total) {
-  const d = state.data; const off = Math.abs(splits - 1) > 0.001;
-  return `<span class="bname">Total <span class="small ${off ? 'late-text' : 'muted'}">· ${Math.round(splits * 1000) / 10}% of budget</span></span>
-    <span class="fig">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))} estimated · ${money(d.budget.reduce((a, b) => a + n0(b.act), 0))} spent · ${money(splits * total)} planned</span>`;
+  const d = state.data; const assigned = splits * total; const left = total - assigned;
+  return `<span class="bname">${Math.abs(left) < 1 ? 'Every dollar is assigned' : left > 0 ? `<span>${money(left)} left to assign</span>` : `<span class="late-text">Over-assigned by ${money(-left)}</span>`}</span>
+    <span class="fig">${money(assigned)} of ${money(total)} budgeted · ${money(d.budget.reduce((a, b) => a + n0(b.est), 0))} expected · ${money(d.budget.reduce((a, b) => a + n0(b.act), 0))} paid</span>`;
 }
 function moneyView(D) {
   const d = state.data; const total = n0(d.o.budget);
@@ -513,17 +548,17 @@ function moneyView(D) {
   const cashChart = columns(bars.map((b) => ({ ...b, value: b.value }))).replace(/<div class="val">(\d+)<\/div>/g, (_, v) => `<div class="val">${Number(v) >= 1000 ? `$${Math.round(Number(v) / 100) / 10}k` : `$${v}`}</div>`);
   const pays = [...D.payments].sort((a, b) => (a.status === 'Paid') - (b.status === 'Paid') || n0(a.due) - n0(b.due));
   const splitOff = Math.abs(D.splits - 1) > 0.001;
-  return `<div class="page-head"><div><h1>Money</h1><p>Budget ${money(total)} · ${money(D.committed)} committed · ${money(D.paid)} paid</p></div><button class="btn primary" data-act="add-payment">+ Add payment</button></div>
-    ${splitOff ? `<div class="banner warn"><span>Your category splits add up to <b>${Math.round(D.splits * 1000) / 10}%</b>. Tap a category below to change its percentage until they total 100%.</span></div>` : ''}
-    <section class="grid-3">
-      <div class="card tile"><div class="label">Committed</div><div class="big">${money(D.committed)}<small> / ${money(total)}</small></div>${meter(D.committed, total)}<div class="foot">${money(total - D.committed)} not yet committed</div></div>
-      <div class="card tile"><div class="label">Paid</div><div class="big">${money(D.paid)}<small> / ${money(D.committed)}</small></div>${meter(D.paid, D.committed, { cls: 'done' })}<div class="foot">${money(D.committed - D.paid)} still owed</div></div>
-      <div class="card tile"><div class="label">Quoted (estimates)</div><div class="big">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))}</div>${meter(d.budget.reduce((a, b) => a + n0(b.est), 0), total)}<div class="foot">from the Estimated column</div></div>
+  const over = D.splits * total - total;
+  return `<div class="page-head"><div><h1>Money</h1><p>Budget ${money(total)} · ${money(D.committed)} booked · ${money(D.paid)} paid</p></div><button class="btn primary" data-act="add-payment">+ Add payment</button></div>
+    ${splitOff && over > 0 ? `<div class="banner warn" id="budget-banner"><span>You've budgeted <b>${money(D.splits * total)}</b> across categories, ${money(over)} more than your ${money(total)} total. Lower a few categories below.</span></div>` : ''}
+    <section class="grid-2">
+      <div class="card tile"><div class="label">Booked with vendors</div><div class="big">${money(D.committed)}<small> of ${money(total)}</small></div>${meter(D.committed, total)}<div class="foot">${money(total - D.committed)} not booked yet</div></div>
+      <div class="card tile"><div class="label">Paid</div><div class="big">${money(D.paid)}<small> of ${money(D.committed)} booked</small></div>${meter(D.paid, D.committed, { cls: 'done' })}<div class="foot">${money(D.committed - D.paid)} still owed</div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Budget by category</h2><span style="display:flex;gap:12px;align-items:baseline"><span class="hint">Tap a category to edit it</span><button class="btn small" data-act="add-budget">+ Add category</button></span></div>
       <div class="card blist">${d.budget.map((b) => budgetItem(b, total)).join('')}
         <div class="btotal" id="budget-total">${budgetTotal(D.splits, total)}</div></div>
-      <div class="legend"><span><i style="background:var(--data)"></i>Spent</span><span><i style="background:color-mix(in srgb,var(--data) 40%,transparent)"></i>Estimated / quoted</span><span><i style="background:var(--data-soft)"></i>Planned</span><span><i style="background:var(--late)"></i>Over plan</span></div></section>
+      <div class="legend"><span><i style="background:var(--data)"></i>Paid</span><span><i style="background:color-mix(in srgb,var(--data) 40%,transparent)"></i>Expected cost</span><span><i style="background:var(--data-soft)"></i>Budget</span><span><i style="background:var(--late)"></i>Over budget</span></div></section>
     <section class="section"><div class="section-head"><h2>Payments by month</h2><span class="hint">unpaid, scheduled</span></div><div class="card pad">${cashChart}</div></section>
     <section class="section"><div class="section-head"><h2>Payments</h2></div><div class="card list">${pays.length ? pays.map(paymentItem).join('') : '<div class="empty">No payments yet. Booking a quote adds its payment schedule here, or tap “Add payment”.</div>'}</div></section>`;
 }
@@ -570,7 +605,7 @@ function partiesOf(guests) {
   return [...map.values()];
 }
 function guestRow(x, inParty) {
-  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}"><div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
+  return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details"><div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
     <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`;
 }
 function partyHTML(members) {
@@ -590,7 +625,8 @@ function suggestions(guests) {
 }
 function suggestionsHTML(guests) {
   const sug = suggestions(guests); if (!sug.length) return '';
-  return `<div class="card pad suggest"><div class="section-head" style="margin-bottom:6px"><h2>Possible couples or households</h2><span class="hint">Same last name. Link them only if they come together.</span></div>
+  if (!state.gsugOpen) return `<button class="suggest-toggle" data-act="open-sug"><span>${pearl(26)} ${plural(sug.length, 'possible couple')} or household${sug.length === 1 ? '' : 's'} to review</span><span class="chev" aria-hidden="true">›</span></button>`;
+  return `<div class="card pad suggest"><div class="section-head" style="margin-bottom:6px"><h2>Possible couples or households</h2><button class="linkbtn" data-act="open-sug">Hide</button></div><p class="muted small" style="margin:0 0 6px">Same last name. Link them only if they come together.</p>
     ${sug.slice(0, state.gsugAll ? sug.length : 3).map((ms) => `<div class="suggest-row"><span>${ms.map((m) => esc(m.name)).join(' · ')}</span><span style="display:flex;gap:6px"><button class="btn small" data-act="link-suggest" data-rows="${ms.map((m) => m.row).join(',')}">Link as a party</button><button class="btn small ghost" data-act="dismiss-suggest" data-rows="${ms.map((m) => m.row).join(',')}">Not a party</button></span></div>`).join('')}
     ${sug.length > 3 ? `<button class="linkbtn" data-act="toggle-sug" style="margin-top:6px">${state.gsugAll ? 'Show fewer' : `Show ${sug.length - 3} more`}</button>` : ''}</div>`;
 }
@@ -639,6 +675,13 @@ function notesView() {
         ${d.photo ? `<div class="form-grid" style="margin-top:14px"><label class="f">Photo framing: left ↔ right<input type="range" min="0" max="100" value="${d.photoX}" data-act="frame" data-k="photoX"></label><label class="f">Photo framing: up ↕ down<input type="range" min="0" max="100" value="${d.photoY}" data-act="frame" data-k="photoY"></label></div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn small" data-act="pick-photo">${d.photo ? 'Change photo' : 'Add photo'}</button><a class="btn small" href="${CONFIG.quotesFolder}" target="_blank" rel="noopener">Quotes folder ↗</a></div></div>
     </section>
+    <section class="section"><div class="section-head"><h2>Pearl's phrases</h2><button class="linkbtn" data-act="reset-pearl">Reset to defaults</button></div>
+      <div class="card pad"><p class="muted small" style="margin:0 0 12px">One phrase per line. Use <code class="inline">{days}</code>, <code class="inline">{overdue}</code> or <code class="inline">{name}</code> and Pearl fills them in (a phrase is skipped when its blank doesn't apply, like {overdue} when nothing is late). Changes save when you click away.</p>
+        <div class="grid-2" style="gap:16px">
+          <label class="f">When you tap Pearl<textarea class="field phrases" id="pearl-tap" data-act="pearl-phrases" data-key="pearlTap" rows="11">${esc(phraseList('pearlTap', DEFAULT_PEARL_TAP).join('\n'))}</textarea></label>
+          <label class="f">When you check off a task<textarea class="field phrases" id="pearl-cheer" data-act="pearl-phrases" data-key="pearlCheer" rows="11">${esc(phraseList('pearlCheer', DEFAULT_PEARL_CHEER).join('\n'))}</textarea></label>
+        </div>
+        <div style="margin-top:12px"><button class="btn small" data-act="try-pearl">${pearl(22)} Try a phrase</button></div></div></section>
     <section class="section"><div class="section-head"><h2>What Claude knows you've decided</h2><span class="hint">${recent.length}</span></div>
       ${recent.length ? `<div style="display:grid;gap:8px">${recent.map((x) => `<div class="decision">${x.note ? `<div class="meta">Re: ${esc(x.note)}</div>` : ''}<div>${esc(x.text || 'Got it')}</div><div class="meta">${esc(x.author)} · ${fmtStamp(x.ts)}</div></div>`).join('')}</div>` : '<div class="card"><div class="empty">Nothing yet. Tap “Got it” on one of Claude\'s notes, or add an instruction.</div></div>'}</section>`;
 }
@@ -744,7 +787,7 @@ function modalView() {
       <label class="f full">Relationship<input class="field" name="rel"></label>
       <label class="f full">Partner of (optional)<input class="field" name="partner" list="guest-names" placeholder="Start typing a guest's name"></label></div>`, 'add-guest');
   if (m.type === 'add-budget') return wrap('Add a budget category', `<div class="form-grid"><label class="f full">Category<input class="field" name="cat" required autofocus placeholder="e.g. Rehearsal dinner"></label>
-      <label class="f">% of budget<input class="field" name="pct" inputmode="decimal" placeholder="e.g. 5"></label><label class="f">Estimated / quoted ($)<input class="field" name="est" inputmode="decimal"></label></div>`, 'add-budget');
+      <label class="f">Budget ($)<input class="field" name="plan" inputmode="decimal" placeholder="4000"></label><label class="f">Expected cost ($)<input class="field" name="est" inputmode="decimal" placeholder="Quote or contract"></label></div>`, 'add-budget');
   if (m.type === 'add-payment') {
     const names = [...new Set(d.vendors.map((v) => v.vendor).filter(Boolean))];
     return wrap('Add a payment', `<div class="form-grid"><label class="f full">Vendor<input class="field" name="vendor" list="vendor-names" required autofocus></label><datalist id="vendor-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -795,32 +838,41 @@ function onCellChange(el) {
 }
 function onBudgetChange(el) {
   const r = state.data.budget.find((x) => x.row === Number(el.dataset.row)); const k = el.dataset.k; if (!r) return;
-  const col = { cat: 'A', pct: 'B', est: 'D', act: 'E', notes: 'G' }[k]; let v;
-  if (k === 'pct') { const n = toNum(String(el.value).replace('%', '')); if (n === null) { toast('Please enter a number', true); return; } v = n === '' ? '' : n / 100; }
-  else if (k === 'est' || k === 'act') { v = toNum(el.value); if (v === null) { toast('Please enter a number', true); return; } }
-  else v = el.value;
-  r[k] = v;
+  const total = n0(state.data.o.budget);
+  let col; let v; let field = k;
+  if (k === 'plan') { // people type dollars; the sheet keeps the share of the total (column B)
+    const n = toNum(el.value);
+    if (n === null) { toast('Enter a dollar amount', true); return; }
+    if (n !== '' && !total) { toast('Set your total budget under Notes first', true); return; }
+    col = 'B'; field = 'pct'; v = n === '' ? '' : n / total;
+  } else if (k === 'est' || k === 'act') {
+    v = toNum(el.value); if (v === null) { toast('Enter a dollar amount', true); return; }
+    col = k === 'est' ? 'D' : 'E';
+  } else { col = k === 'cat' ? 'A' : 'G'; v = el.value; }
+  r[field] = v;
   save(() => writeCells([{ range: `Budget!${col}${r.row}`, values: [[k === 'cat' || k === 'notes' ? asText(v) : v]] }]));
-  // refresh the chart row, planned figure and totals without stealing focus from the next field
-  const total = n0(state.data.o.budget); const D = derived();
+  // refresh the chart row, share and totals without stealing focus from the next field
+  const D = derived();
   const row = app.querySelector(`[data-brow="${r.row}"]`); if (row) row.innerHTML = budgetSummary(r, total);
-  const pl = app.querySelector(`[data-planned="${r.row}"]`); if (pl) pl.textContent = money(n0(r.pct) * total);
+  const pl = app.querySelector(`[data-planned="${r.row}"]`); if (pl) pl.textContent = isNum(r.pct) ? `${+(r.pct * 100).toFixed(1)}%` : '—';
   const tot = document.getElementById('budget-total'); if (tot) tot.innerHTML = budgetTotal(D.splits, total);
-  if (k === 'pct' && Math.abs(D.splits - 1) <= 0.001 && !isEditing()) render();
+  const ban = document.getElementById('budget-banner'); const over = D.splits * total - total;
+  if (ban) { if (over > 0.5) ban.querySelector('span').innerHTML = `You've budgeted <b>${money(D.splits * total)}</b> across categories, ${money(over)} more than your ${money(total)} total. Lower a few categories below.`; else ban.remove(); }
 }
 
 // Budget rows are real sheet rows: deleting/inserting shifts the rows below, so reload afterwards.
 function deleteBudgetRow(row) {
   const d = state.data; const b = d.budget.find((x) => x.row === row); if (!b) return;
-  const money$ = [isNum(b.est) && b.est ? `${money(b.est)} estimated` : '', isNum(b.act) && b.act ? `${money(b.act)} spent` : ''].filter(Boolean).join(' and ');
+  const money$ = [isNum(b.est) && b.est ? `${money(b.est)} expected` : '', isNum(b.act) && b.act ? `${money(b.act)} paid` : ''].filter(Boolean).join(' and ');
   if (!confirm(`Delete "${b.cat}"?${money$ ? `\n\nIt still has ${money$}. Move that to another category first if you want to keep it.` : ''}`)) return;
   d.budget = d.budget.filter((x) => x.row !== row).map((x) => (x.row > row ? { ...x, row: x.row - 1 } : x));
   state.openBudget = null; render();
   save(async () => { await batchUpdate([{ deleteDimension: { range: { sheetId: BUDGET_SHEET_ID, dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }]); await load(); render(); }, `Deleted ${b.cat}`);
 }
 function addBudgetRow(fd) {
-  const d = state.data; const pctN = toNum(String(fd.pct || '').replace('%', '')); const est = toNum(fd.est);
-  if (pctN === null || est === null) { toast('Please enter numbers for % and estimate', true); return; }
+  const d = state.data; const plan = toNum(fd.plan); const est = toNum(fd.est); const total = n0(d.o.budget);
+  if (plan === null || est === null) { toast('Enter dollar amounts for budget and expected cost', true); return; }
+  const pctN = plan === '' || !total ? '' : (plan / total) * 100;
   const last = Math.max(4, ...d.budget.map((x) => x.row)); const r = last + 1; // new row goes right after the last category, inside the TOTAL sums
   d.budget.push({ row: r, cat: fd.cat.trim(), pct: pctN === '' ? '' : pctN / 100, est, act: '', notes: '' });
   state.modal = null; state.openBudget = r; render();
@@ -892,6 +944,15 @@ app.addEventListener('click', (e) => {
   else if (act === 'filter') { state.filter = el.dataset.f; render(); }
   else if (act === 'vtab') { state.vtab = el.dataset.v; render(); }
   else if (act === 'toggle-sug') { state.gsugAll = !state.gsugAll; render(); }
+  else if (act === 'open-sug') { state.gsugOpen = !state.gsugOpen; render(); }
+  else if (act === 'reset-pearl') { if (!confirm("Reset Pearl's phrases to the defaults?")) return; d.pearlTap = ''; d.pearlCheer = ''; render(); save(() => writeCells([{ range: 'Settings!A48:B49', values: [['pearl_tap', ''], ['pearl_cheer', '']] }], true), 'Pearl is back to her usual lines'); }
+  else if (act === 'try-pearl') { const p = el.querySelector('svg.pearl'); if (p) pearlSay(p, pick(pearlLines())); }
+  else if (act === 'set-owner') {
+    e.stopPropagation(); const t = taskById(el.dataset.id); if (!t) return;
+    const prev = t.owner; const next = t.owner === el.dataset.v ? '' : el.dataset.v;
+    saveTaskField(t, 'owner', next); render();
+    undoToast(next ? `Assigned to ${next}` : 'Owner cleared', () => { saveTaskField(t, 'owner', prev); render(); });
+  }
   else if (act === 'unlink') { const g = d.guests.find((x) => x.row === Number(el.dataset.row)); if (g) unlinkGuest(g); }
   else if (act === 'add-plus1') { const g = d.guests.find((x) => x.row === Number(el.dataset.row)); if (g) addPlusOne(g); }
   else if (act === 'link-suggest') {
@@ -913,12 +974,14 @@ app.addEventListener('click', (e) => {
   else if (act === 'pick-photo') document.getElementById('photo-input').click();
   else if (act === 'toggle-done') {
     e.stopPropagation(); const t = taskById(el.dataset.id); if (!t) return;
-    const nowDone = t.status !== 'Done'; const lateBefore = derived().overdue.length;
-    saveTaskField(t, 'status', nowDone ? 'Done' : 'Not started'); render();
+    const nowDone = t.status !== 'Done'; const lateBefore = derived().overdue.length; const prev = t.status;
+    const next = nowDone ? 'Done' : (t.prevStatus && t.prevStatus !== 'Done' ? t.prevStatus : 'Not started');
+    t.prevStatus = prev; saveTaskField(t, 'status', next); render();
+    const undo = () => { saveTaskField(t, 'status', prev); render(); };
     if (nowDone) {
-      if (lateBefore > 0 && derived().overdue.length === 0) { setTimeout(() => { toast('Nothing overdue! Pearl does a victory hop 🎉'); burst(window.innerWidth / 2, window.innerHeight / 2, ['🎉', '🌿', '✨', '💕']); pearlRun(); }, 900); }
-      else { setTimeout(() => toast(PEARL_CHEERS[Math.floor(Math.random() * PEARL_CHEERS.length)]), 900); if (Math.random() < 0.35) pearlRun(); }
-    }
+      if (lateBefore > 0 && derived().overdue.length === 0) { undoToast('Nothing overdue! Pearl does a victory hop 🎉', undo); burst(window.innerWidth / 2, window.innerHeight / 2, ['🎉', '🌿', '✨', '💕']); pearlRun(); }
+      else { undoToast(pearlCheer(), undo); if (Math.random() < 0.35) pearlRun(); }
+    } else undoToast(`Marked ${next.toLowerCase()}`, undo);
   } else if (act === 'quote-status') {
     const q = d.quotes.find((x) => x.id === el.dataset.id); if (!q) return; q.status = el.dataset.v; render();
     save(() => writeCells([{ range: `Quotes!D${q.row}`, values: [[q.status]] }]));
@@ -944,6 +1007,10 @@ app.addEventListener('change', (e) => {
     o[key] = local; if (key === 'weddingDate') for (const t of state.data.tasks) if (isNum(t.daysBefore)) t.due = local - t.daysBefore;
     save(() => writeCells([{ range: `Overview!${el.dataset.cell}`, values: [[write]] }])); render();
   } else if (act === 'gfilter') { state[el.dataset.key] = el.value; render(); }
+  else if (act === 'pearl-phrases') {
+    const d = state.data; d[el.dataset.key] = el.value.split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+    save(() => writeCells([{ range: 'Settings!A48:B49', values: [['pearl_tap', d.pearlTap || ''], ['pearl_cheer', d.pearlCheer || '']] }], true), "Saved Pearl's phrases");
+  }
   else if (act === 'frame') {
     const d = state.data; d[el.dataset.k] = Number(el.value);
     save(() => writeCells([{ range: 'Settings!A45:B46', values: [['photo_x', d.photoX], ['photo_y', d.photoY]] }]), 'Framing saved');
@@ -1057,8 +1124,12 @@ function removeRow(sheet, row) {
   if (!confirm(`Remove ${label || 'this row'}? This clears the row in the sheet.`)) return;
   state.drawer = null;
   if (sheet === 'guests') {
-    const label = r.party;
+    const label = r.party; const before = { ...r };
     Object.assign(r, { group: '', name: '', side: '', rel: '', contact: '', address: '', std: '', rsvp: '', meal: '', diet: '', table: '', thanks: '', party: '' });
+    setTimeout(() => undoToast(`Removed ${before.name}`, () => {
+      Object.assign(r, before); render();
+      save(() => writeCells([{ range: `Guests!A${row}:N${row}`, values: [[`=ROW(B${row})-3`, before.group, asText(before.name), before.side, asText(before.rel), asText(before.contact), asText(before.address), before.std, before.rsvp, asText(before.meal), asText(before.diet), asText(String(before.table ?? '')), before.thanks, asText(before.party || '')]] }]), 'Guest restored');
+    }), 1200);
     const writes = [{ range: `Guests!B${row}:N${row}`, values: [Array(13).fill('')] }];
     const rest = label ? state.data.guests.filter((x) => x.name && x.party === label) : [];
     if (rest.length === 1) { rest[0].party = ''; writes.push(...partyWrites(rest)); }
@@ -1077,6 +1148,10 @@ document.addEventListener('mousemove', (e) => {
   tip.textContent = el.dataset.tip; tip.classList.add('show');
   const x = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12); tip.style.left = `${x}px`; tip.style.top = `${e.clientY - tip.offsetHeight - 10}px`;
 });
+app.addEventListener('keydown', (e) => {
+  const el = e.target; if (!(e.key === 'Enter' || e.key === ' ') || el.getAttribute('role') !== 'button' || !el.dataset.act) return;
+  e.preventDefault(); el.click();
+});
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.modal || state.drawer)) { state.modal = null; state.drawer = null; render(); } });
 
 // ---------- Pearl easter eggs ----------
@@ -1084,15 +1159,9 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.m
 // Finishing the last overdue task, countdown milestones and the wedding day get a little celebration.
 const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 function pearlLines() {
-  const lines = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?', 'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘'];
-  if (state.data) {
-    const D = derived();
-    if (D.daysToGo > 0) lines.push(`${D.daysToGo} sleeps until the wedding!`);
-    if (D.overdue.length) lines.push(`Psst… ${plural(D.overdue.length, 'task')} overdue. Pearl won't tell.`);
-    if (state.me) lines.push(`Hi ${state.me}! 👋`);
-  }
+  const lines = phraseList('pearlTap', DEFAULT_PEARL_TAP).map(fillPhrase).filter(Boolean);
   if (isNight()) lines.push('Zzz… oh! Pearl was just resting her eyes.');
-  return lines;
+  return lines.length ? lines : ["G'day! 🌿"];
 }
 let bubbleTimer;
 function pearlSay(el, text) {
