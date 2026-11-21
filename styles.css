@@ -361,3 +361,7 @@ input[type=range] { accent-color: var(--data); width: 100%; }
 .mate .btn { margin-left: auto; }
 .link-form { display: flex; gap: 8px; margin-top: 8px; }
 .link-form .field { padding: 6px 10px; }
+
+.bedit-foot { display: flex; justify-content: flex-end; }
+.btn.danger { color: var(--late); }
+.btn.danger:hover { border-color: var(--late); }

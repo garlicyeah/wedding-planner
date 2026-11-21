@@ -134,6 +134,8 @@ async function writeCells(data, raw = false) {
   if (DEMO || !data.length) return;
   await api('/values:batchUpdate', { method: 'POST', body: { valueInputOption: raw ? 'RAW' : 'USER_ENTERED', data } });
 }
+const BUDGET_SHEET_ID = 596473812;
+async function batchUpdate(requests) { if (DEMO) return; await api(':batchUpdate', { method: 'POST', body: { requests } }); }
 async function appendRow(sheet, lastCol, row) {
   if (DEMO) return;
   const range = encodeURIComponent(`${sheet}!A:${lastCol}`);
@@ -484,6 +486,7 @@ function budgetItem(b, total) {
       ${f('est', 'Estimated / quoted ($)', isNum(b.est) ? b.est : '', 'inputmode="decimal"')}
       ${f('act', 'Actual spent ($)', isNum(b.act) ? b.act : '', 'inputmode="decimal"')}
       <label class="f wide">Notes<input class="field" data-act="budget" data-row="${b.row}" data-k="notes" value="${esc(b.notes)}"></label>
+      <div class="wide bedit-foot"><button class="btn small ghost danger" data-act="delete-budget" data-row="${b.row}">Delete category</button></div>
     </div>` : ''}</div>`;
 }
 function budgetTotal(splits, total) {
@@ -511,7 +514,7 @@ function moneyView(D) {
       <div class="card tile"><div class="label">Paid</div><div class="big">${money(D.paid)}<small> / ${money(D.committed)}</small></div>${meter(D.paid, D.committed, { cls: 'done' })}<div class="foot">${money(D.committed - D.paid)} still owed</div></div>
       <div class="card tile"><div class="label">Quoted (estimates)</div><div class="big">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))}</div>${meter(d.budget.reduce((a, b) => a + n0(b.est), 0), total)}<div class="foot">from the Estimated column</div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Budget by category</h2><span class="hint">Tap a category to edit it</span></div>
+    <section class="section"><div class="section-head"><h2>Budget by category</h2><span style="display:flex;gap:12px;align-items:baseline"><span class="hint">Tap a category to edit it</span><button class="btn small" data-act="add-budget">+ Add category</button></span></div>
       <div class="card blist">${d.budget.map((b) => budgetItem(b, total)).join('')}
         <div class="btotal" id="budget-total">${budgetTotal(D.splits, total)}</div></div>
       <div class="legend"><span><i style="background:var(--data)"></i>Spent</span><span><i style="background:color-mix(in srgb,var(--data) 40%,transparent)"></i>Estimated / quoted</span><span><i style="background:var(--data-soft)"></i>Planned</span><span><i style="background:var(--late)"></i>Over plan</span></div></section>
@@ -734,6 +737,8 @@ function modalView() {
       <label class="f">Group<select class="field" name="group"><option>A</option><option>B</option><option>C</option></select></label>
       <label class="f full">Relationship<input class="field" name="rel"></label>
       <label class="f full">Partner of (optional)<input class="field" name="partner" list="guest-names" placeholder="Start typing a guest's name"></label></div>`, 'add-guest');
+  if (m.type === 'add-budget') return wrap('Add a budget category', `<div class="form-grid"><label class="f full">Category<input class="field" name="cat" required autofocus placeholder="e.g. Rehearsal dinner"></label>
+      <label class="f">% of budget<input class="field" name="pct" inputmode="decimal" placeholder="e.g. 5"></label><label class="f">Estimated / quoted ($)<input class="field" name="est" inputmode="decimal"></label></div>`, 'add-budget');
   if (m.type === 'add-payment') {
     const names = [...new Set(d.vendors.map((v) => v.vendor).filter(Boolean))];
     return wrap('Add a payment', `<div class="form-grid"><label class="f full">Vendor<input class="field" name="vendor" list="vendor-names" required autofocus></label><datalist id="vendor-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -796,6 +801,28 @@ function onBudgetChange(el) {
   const pl = app.querySelector(`[data-planned="${r.row}"]`); if (pl) pl.textContent = money(n0(r.pct) * total);
   const tot = document.getElementById('budget-total'); if (tot) tot.innerHTML = budgetTotal(D.splits, total);
   if (k === 'pct' && Math.abs(D.splits - 1) <= 0.001 && !isEditing()) render();
+}
+
+// Budget rows are real sheet rows: deleting/inserting shifts the rows below, so reload afterwards.
+function deleteBudgetRow(row) {
+  const d = state.data; const b = d.budget.find((x) => x.row === row); if (!b) return;
+  const money$ = [isNum(b.est) && b.est ? `${money(b.est)} estimated` : '', isNum(b.act) && b.act ? `${money(b.act)} spent` : ''].filter(Boolean).join(' and ');
+  if (!confirm(`Delete "${b.cat}"?${money$ ? `\n\nIt still has ${money$}. Move that to another category first if you want to keep it.` : ''}`)) return;
+  d.budget = d.budget.filter((x) => x.row !== row).map((x) => (x.row > row ? { ...x, row: x.row - 1 } : x));
+  state.openBudget = null; render();
+  save(async () => { await batchUpdate([{ deleteDimension: { range: { sheetId: BUDGET_SHEET_ID, dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }]); await load(); render(); }, `Deleted ${b.cat}`);
+}
+function addBudgetRow(fd) {
+  const d = state.data; const pctN = toNum(String(fd.pct || '').replace('%', '')); const est = toNum(fd.est);
+  if (pctN === null || est === null) { toast('Please enter numbers for % and estimate', true); return; }
+  const last = Math.max(4, ...d.budget.map((x) => x.row)); const r = last + 1; // new row goes right after the last category, inside the TOTAL sums
+  d.budget.push({ row: r, cat: fd.cat.trim(), pct: pctN === '' ? '' : pctN / 100, est, act: '', notes: '' });
+  state.modal = null; state.openBudget = r; render();
+  save(async () => {
+    await batchUpdate([{ insertDimension: { range: { sheetId: BUDGET_SHEET_ID, dimension: 'ROWS', startIndex: last, endIndex: last + 1 }, inheritFromBefore: true } }]);
+    await writeCells([{ range: `Budget!A${r}:G${r}`, values: [[asText(fd.cat.trim()), pctN === '' ? '' : pctN / 100, `=B${r}*Overview!$B$5`, est, '', `=IF(E${r}="","",C${r}-E${r})`, '']] }]);
+    await load(); render();
+  }, `Added ${fd.cat.trim()}`);
 }
 
 // Decode any image the browser can show; iPhone/Mac HEIC photos are converted in the browser first.
@@ -866,6 +893,8 @@ app.addEventListener('click', (e) => {
     const label = ms[0].name; ms.forEach((m) => { m.party = label; }); render();
     save(() => writeCells(partyWrites(ms)), `Linked ${ms.map((m) => m.name).join(' & ')}`);
   } else if (act === 'dismiss-suggest') { store.set('wp_dismissed_pairs', [...store.get('wp_dismissed_pairs', []), el.dataset.rows]); render(); }
+  else if (act === 'add-budget') { state.modal = { type: 'add-budget' }; render(); }
+  else if (act === 'delete-budget') deleteBudgetRow(Number(el.dataset.row));
   else if (act === 'toggle-budget') { const r = Number(el.dataset.row); state.openBudget = state.openBudget === r ? null : r; render(); }
   else if (act === 'signin' || act === 'reconnect') signIn('');
   else if (act === 'switch-me') { state.me = null; store.del('wp_me'); render(); }
@@ -939,6 +968,7 @@ app.addEventListener('submit', (e) => {
   } else if (kind === 'add-task') addTask(fd);
   else if (kind === 'add-vendor') addVendor(fd);
   else if (kind === 'add-guest') addGuest(fd);
+  else if (kind === 'add-budget') addBudgetRow(fd);
   else if (kind === 'link') {
     const g = d.guests.find((x) => x.row === Number(form.dataset.row));
     const other = d.guests.find((x) => x.name && x.name.toLowerCase() === String(fd.other || '').trim().toLowerCase());
