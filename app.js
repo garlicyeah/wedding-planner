@@ -23,6 +23,25 @@ const ICON = {
 };
 const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
+// Pearl, the wedding mascot (hand-drawn SVG, so no personal photo lives in this public repo)
+const PEARL = `<path d="M22 14C13 30 17 45 31 49l9-19Z" fill="#c4672b"/><path d="M24.5 21c-4.5 11-2 20 6 23l5.5-13Z" fill="#5b4141"/>
+<path d="M78 14c9 16 5 31-9 35l-9-19Z" fill="#c4672b"/><path d="M75.5 21c4.5 11 2 20-6 23L64 31Z" fill="#5b4141"/>
+<ellipse cx="50" cy="49" rx="25" ry="23" fill="#c4672b"/>
+<path d="M44 28c2-4.5 10-4.5 12 0l4 18c10 6 8 25-10 25s-20-19-10-25Z" fill="#f3e6cf"/>
+<circle cx="37" cy="45" r="3.7" fill="#1d1a19"/><circle cx="63" cy="45" r="3.7" fill="#1d1a19"/>
+<circle cx="38.3" cy="43.7" r="1.2" fill="#fff"/><circle cx="64.3" cy="43.7" r="1.2" fill="#fff"/>
+<ellipse cx="50" cy="60" rx="7" ry="5" fill="#f2b9a8"/>
+<ellipse cx="47.2" cy="60" rx="1.4" ry="1.1" fill="#3a2a2a"/><ellipse cx="52.8" cy="60" rx="1.4" ry="1.1" fill="#3a2a2a"/>
+<path d="M47.5 65.5q2.5 2 5 0" stroke="#3a2a2a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+<path d="M25 69q25 11 50 0l-6 9q-19 22-38 0Z" fill="#6b9fd6"/><path d="M50 83l-6 12 6-3.5 6 3.5Z" fill="#5a8cc2"/>`;
+const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
+const PEARL_CHEERS = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
+function pearlLine(D) {
+  if (D.overdue.length) return `Pearl's nudge: ${plural(D.overdue.length, 'task')} overdue. One at a time.`;
+  if (D.soon.length) return `Pearl's nudge: ${plural(D.soon.length, 'task')} coming up this month.`;
+  return 'Pearl says: all caught up!';
+}
+
 // ---------- helpers ----------
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -126,6 +145,7 @@ function parse(valueRanges) {
   const s = (v) => (v ?? '');
   const budget = [];
   for (let i = 0; i < bu.length; i++) { const r = bu[i] || []; if (r[0] === 'TOTAL') break; if (r[0]) budget.push({ row: 5 + i, cat: s(r[0]), pct: r[1], est: r[3], act: r[4], notes: s(r[6]) }); }
+  const setting = (k) => { const r = se.find((x) => x[0] === k); return r ? r[1] : undefined; };
   const photo = se.filter((r) => String(r[0] || '').startsWith('photo:'))
     .sort((a, b) => Number(a[0].split(':')[1]) - Number(b[0].split(':')[1])).map((r) => r[1] || '').join('');
   return {
@@ -154,6 +174,8 @@ function parse(valueRanges) {
       row: 2 + i, vendor: s(r[0]), cat: s(r[1]), what: s(r[2]), amount: r[3], due: r[4], status: s(r[5]) || 'Planned', paidOn: r[6], notes: s(r[7]), quoteId: s(r[8]),
     })).filter((p) => p.vendor || isNum(p.amount)),
     photo,
+    photoX: isNum(setting('photo_x')) ? setting('photo_x') : 50,
+    photoY: isNum(setting('photo_y')) ? setting('photo_y') : 40,
   };
 }
 async function load() {
@@ -247,16 +269,16 @@ function columns(bars) {
 const app = document.getElementById('app');
 function render() {
   if (!DEMO && !state.signedIn) { app.innerHTML = signInView(); return; }
-  if (!state.data) { app.innerHTML = '<div class="splash">Loading your plan…</div>'; return; }
+  if (!state.data) { app.innerHTML = `<div class="splash"><div style="text-align:center">${pearl(84, 'bob')}<p>Pearl is fetching your plan…</p></div></div>`; return; }
   const D = derived();
   const view = { week: weekView, tasks: tasksView, vendors: vendorsView, money: moneyView, guests: guestsView, notes: notesView }[state.tab] || weekView;
-  const avatar = state.data.photo ? `<img class="avatar" src="data:image/jpeg;base64,${state.data.photo}" alt="Sharon and Claire">` : '<div class="avatar">S&amp;C</div>';
+  const avatar = state.data.photo ? `<img class="avatar" src="data:image/jpeg;base64,${state.data.photo}" alt="Sharon and Claire" style="object-position:${state.data.photoX}% ${state.data.photoY}%">` : '<div class="avatar">S&amp;C</div>';
   const nav = (cls, labelIdx) => TABS.map(([k, l, s]) => `<button data-act="tab" data-tab="${k}" ${state.tab === k ? 'aria-current="page"' : ''}>${icon(k)}<span>${labelIdx ? s : l}</span>${!labelIdx && k === 'tasks' && D.overdue.length ? `<span class="badge">${D.overdue.length}</span>` : ''}</button>`).join('');
   app.innerHTML = `<div class="layout">
     <aside class="sidebar">
       <div class="couple">${avatar}<div><div class="couple-name">Sharon &amp; Claire</div><div class="couple-sub">${D.daysToGo !== null ? `${D.daysToGo} days to go` : ''}</div></div></div>
       <nav class="nav">${nav('nav', 0)}</nav>
-      <div class="side-foot"><span>Signed in as <b>${esc(state.me || '—')}</b></span><button class="linkbtn" data-act="switch-me">Switch person</button></div>
+      <div class="side-foot"><div class="side-pearl">${pearl(40)}<span>${esc(pearlLine(D))}</span></div><span>Signed in as <b>${esc(state.me || '—')}</b></span><button class="linkbtn" data-act="switch-me">Switch person</button></div>
     </aside>
     <div>
       <div class="mobile-top">${avatar}<div class="couple-name">Sharon &amp; Claire</div><span class="me muted">${esc(state.me || '')} · <button class="linkbtn" data-act="switch-me">switch</button></span></div>
@@ -273,6 +295,7 @@ function render() {
 
 function signInView() {
   return `<div class="signin"><div class="card">
+    ${pearl(84)}
     <h1>Wedding Planner</h1><p>Sign in with the Google account that can edit the planning sheet.</p>
     ${state.error ? `<p class="late-text">${esc(state.error)}</p>` : ''}
     <button class="btn primary" data-act="signin">Sign in with Google</button></div></div>`;
@@ -289,10 +312,17 @@ function weekView(D) {
   const target = n0(o.targetGuests);
   return `
     <div class="page-head"><div><h1>This week</h1><p>${today}. Here's what matters now.</p></div></div>
-    <section class="hero ${d.photo ? '' : 'nophoto'}">
-      ${d.photo ? `<img src="data:image/jpeg;base64,${d.photo}" alt="Sharon and Claire">` : ''}
-      <button class="hero-photo-btn" data-act="pick-photo">${d.photo ? 'Change photo' : 'Add a photo of you two'}</button>
-      <div class="hero-text"><div class="hero-days">${D.daysToGo ?? '—'} days</div><div class="hero-sub">until ${fmtDate(o.weddingDate) || 'the wedding'}${o.venue ? ` · ${esc(o.venue)}` : ''}</div></div>
+    <section class="hero2">
+      <div class="hero-card">
+        <div><div class="hero-days">${D.daysToGo ?? '—'}<span> days</span></div>
+        <div class="hero-sub">until ${fmtDate(o.weddingDate) || 'the wedding'}${o.venue ? ` · ${esc(o.venue)}` : ''}</div></div>
+        ${focus[0] ? `<button class="next-up" data-act="open-task" data-id="${esc(focus[0].id)}"><span class="muted small">Next up</span><span class="next-title">${esc(focus[0].name)}</span><span class="small ${focus[0].overdue ? 'late-text' : 'muted'}">${focus[0].overdue ? `${plural(-focus[0].left, 'day')} late` : `Due ${shortDate(focus[0].due)}`}</span></button>` : ''}
+        <div class="hero-pearl">${pearl(46)}<span>${esc(pearlLine(D))}</span></div>
+      </div>
+      <div class="hero-photo ${d.photo ? '' : 'empty'}">
+        ${d.photo ? `<img src="data:image/jpeg;base64,${d.photo}" alt="Sharon and Claire" style="object-position:${d.photoX}% ${d.photoY}%">` : `<button class="hero-empty" data-act="pick-photo">${pearl(72)}<span>Add a photo of you two</span></button>`}
+        ${d.photo ? `<button class="hero-photo-btn" data-act="pick-photo">Change photo</button><div class="peek" title="Pearl">${pearl(70)}</div>` : ''}
+      </div>
     </section>
 
     <section class="grid-3" style="margin-top:12px">
@@ -303,7 +333,7 @@ function weekView(D) {
 
     <section class="section">
       <div class="section-head"><h2>Focus</h2><button class="linkbtn" data-act="tab" data-tab="tasks">All tasks</button></div>
-      <div class="card list">${focus.length ? focus.map((t) => taskItem(t)).join('') : '<div class="empty">Nothing urgent. Enjoy the week.</div>'}</div>
+      <div class="card list">${focus.length ? focus.map((t) => taskItem(t)).join('') : `<div class="empty">${pearl(64)}<div>Nothing urgent. Pearl says enjoy the week.</div></div>`}</div>
     </section>
 
     <section class="grid-2 section">
@@ -511,6 +541,7 @@ function notesView() {
           <label class="f">Target guests<input class="field" inputmode="numeric" data-act="ov" data-cell="B6" data-type="num" value="${isNum(o.targetGuests) ? o.targetGuests : ''}"></label>
           <label class="f">Venue / city<input class="field" data-act="ov" data-cell="B7" data-type="text" value="${esc(o.venue)}"></label>
         </div>
+        ${d.photo ? `<div class="form-grid" style="margin-top:14px"><label class="f">Photo framing: left ↔ right<input type="range" min="0" max="100" value="${d.photoX}" data-act="frame" data-k="photoX"></label><label class="f">Photo framing: up ↕ down<input type="range" min="0" max="100" value="${d.photoY}" data-act="frame" data-k="photoY"></label></div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn small" data-act="pick-photo">${d.photo ? 'Change photo' : 'Add photo'}</button><a class="btn small" href="${CONFIG.quotesFolder}" target="_blank" rel="noopener">Quotes folder ↗</a></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>What Claude knows you've decided</h2><span class="hint">${recent.length}</span></div>
@@ -694,7 +725,7 @@ app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const d = state.data;
   if (['close-modal', 'close-drawer'].includes(act)) { if (e.target === el || el.tagName === 'BUTTON') { if (act === 'close-modal') state.modal = null; else state.drawer = null; render(); } return; }
-  if (act === 'open-task') { if (e.target.closest('button, a, input, select')) return; state.drawer = { type: 'task', id: el.dataset.id }; render(); return; }
+  if (act === 'open-task') { const inner = e.target.closest('button, a, input, select'); if (inner && inner !== el) return; state.drawer = { type: 'task', id: el.dataset.id }; render(); return; }
   if (act === 'open-vendor') { state.drawer = { type: 'vendor', row: Number(el.dataset.row) }; render(); return; }
   if (act === 'open-guest') { state.drawer = { type: 'guest', row: Number(el.dataset.row) }; render(); return; }
   if (act === 'tab') { state.tab = el.dataset.tab; state.drawer = null; store.set('wp_tab2', state.tab); render(); window.scrollTo(0, 0); }
@@ -711,7 +742,9 @@ app.addEventListener('click', (e) => {
   else if (act === 'pick-photo') document.getElementById('photo-input').click();
   else if (act === 'toggle-done') {
     e.stopPropagation(); const t = taskById(el.dataset.id); if (!t) return;
-    saveTaskField(t, 'status', t.status === 'Done' ? 'Not started' : 'Done'); render();
+    const nowDone = t.status !== 'Done';
+    saveTaskField(t, 'status', nowDone ? 'Done' : 'Not started'); render();
+    if (nowDone) setTimeout(() => toast(PEARL_CHEERS[Math.floor(Math.random() * PEARL_CHEERS.length)]), 900);
   } else if (act === 'quote-status') {
     const q = d.quotes.find((x) => x.id === el.dataset.id); if (!q) return; q.status = el.dataset.v; render();
     save(() => writeCells([{ range: `Quotes!D${q.row}`, values: [[q.status]] }]));
@@ -737,6 +770,10 @@ app.addEventListener('change', (e) => {
     o[key] = local; if (key === 'weddingDate') for (const t of state.data.tasks) if (isNum(t.daysBefore)) t.due = local - t.daysBefore;
     save(() => writeCells([{ range: `Overview!${el.dataset.cell}`, values: [[write]] }])); render();
   } else if (act === 'gfilter') { state[el.dataset.key] = el.value; render(); }
+  else if (act === 'frame') {
+    const d = state.data; d[el.dataset.k] = Number(el.value);
+    save(() => writeCells([{ range: 'Settings!A45:B46', values: [['photo_x', d.photoX], ['photo_y', d.photoY]] }]), 'Framing saved');
+  }
 });
 document.getElementById('photo-input').addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; });
 
