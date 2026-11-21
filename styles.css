@@ -516,3 +516,11 @@ textarea.phrases { min-height: 220px; font-size: 14px; line-height: 1.6; }
   .hero-photo.empty .hero-empty { grid-auto-flow: column; gap: 12px; align-items: center; }
   .hero-photo.empty .pearl { width: 44px; height: 44px; }
 }
+
+/* Parties on one row */
+.party-row .pnames { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.pname { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--ink); text-align: left; border-radius: 6px; }
+.pname:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.amp { color: var(--ink-3); font-weight: 400; }
+.pill.plus { border: 0; cursor: pointer; font-weight: 600; margin-left: 2px; }
+.pill.plus:hover { background: var(--line); }

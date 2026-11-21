@@ -37,7 +37,7 @@ const PEARL = `<g class="p-ear p-ear-l"><path d="M22 14C13 30 17 45 31 49l9-19Z"
 const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls} ${isNight() ? 'sleepy' : ''}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
 // Pearl's phrases (ask Claude to change them). Saved overrides in Settings A48:B49 still win. Placeholders: {days} {overdue} {name}; 'Claire:' / 'Sharon:' prefix = that person only
 const DEFAULT_PEARL_TAP = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?',
-  'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋',
+  'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Bounce! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋',
   'Claire: mom.', 'ESQUEEZIE!!', 'Cake?'];
 const DEFAULT_PEARL_CHEER = ['Done! Pearl is proud of you 🐾', 'One less thing. Pearl approves.', 'Nice! Pearl does a little happy dance.', 'Checked off. Pearl wiggles her ears.'];
 function fillPhrase(line) {
@@ -611,9 +611,27 @@ function guestRow(x, inParty) {
   return `<div class="item clickable ${inParty ? 'in-party' : ''}" data-act="open-guest" data-row="${x.row}" role="button" tabindex="0" aria-label="${esc(x.name)}, open details"><div class="item-main"><div class="item-title">${esc(x.name)}${isPlusOne(x) ? ' <span class="pill">+1</span>' : ''}</div><div class="item-meta">${esc(x.rel || '—')}${x.address ? '' : ' · <span>no address</span>'}</div></div>
     <div class="item-side">${x.group && x.group !== 'A' ? `<span class="pill">${esc(x.group)}-list</span>` : ''}<span class="who ${esc(x.side)}">${esc(x.side || '—')}</span>${x.rsvp === 'Yes' ? '<span class="pill good">Yes</span>' : x.rsvp === 'No' ? '<span class="pill late">No</span>' : ''}</div></div>`;
 }
+// A party (partners and +1s) is one row: "Aislinn Mclaughlin & Abe", each name opens that person.
+const shortName = (g) => g.name.replace(/\s*\(.*?\)\s*/g, ' ').trim(); // "Abe (Aislinn)" -> "Abe"
+function rsvpPill(ms) {
+  const yes = ms.filter((m) => m.rsvp === 'Yes').length; const no = ms.filter((m) => m.rsvp === 'No').length;
+  if (yes === ms.length) return '<span class="pill good">Yes</span>';
+  if (no === ms.length) return '<span class="pill late">No</span>';
+  return yes || no ? `<span class="pill">${yes} yes${no ? ` · ${no} no` : ''}</span>` : '';
+}
 function partyHTML(members) {
   if (members.length === 1) return guestRow(members[0], false);
-  return `<div class="party"><div class="party-label">Party of ${members.length}</div>${members.map((m) => guestRow(m, true)).join('')}</div>`;
+  const named = members.filter((m) => !isPlusOne(m)); const plus = members.filter(isPlusOne);
+  const nameBtn = (m) => `<button class="pname" data-act="open-guest" data-row="${m.row}" aria-label="${esc(m.name)}, open details">${esc(shortName(m))}</button>`;
+  const names = named.map(nameBtn).join('<span class="amp">&amp;</span>')
+    + plus.map((m) => `<button class="pill plus" data-act="open-guest" data-row="${m.row}" aria-label="${esc(m.name)}, open details">+1</button>`).join('');
+  const sides = [...new Set(members.map((m) => m.side).filter(Boolean))];
+  const groups = [...new Set(members.map((m) => m.group || 'A'))].filter((x) => x !== 'A');
+  const rels = [...new Set(members.map((m) => m.rel).filter(Boolean))];
+  const hasAddr = members.some((m) => m.address);
+  return `<div class="item party-row"><div class="item-main"><div class="item-title pnames">${names}</div>
+      <div class="item-meta">${esc(rels.join(' / ') || '—')} · ${plural(members.length, 'guest')}${hasAddr ? '' : ' · no address'}</div></div>
+    <div class="item-side">${groups.length ? `<span class="pill">${esc(groups.join('/'))}-list</span>` : ''}${sides.map((sd) => `<span class="who ${esc(sd)}">${esc(sd)}</span>`).join('')}${rsvpPill(members)}</div></div>`;
 }
 // Same last name, same side, neither in a party yet -> suggest linking (never automatic).
 const lastName = (n) => n.replace(/\(.*?\)/g, '').replace(/-\s*guest\??$/i, '').trim().split(/\s+/).slice(1).pop() || '';
