@@ -5,4 +5,5 @@ export const CONFIG = {
   spreadsheetId: '14AecUP7lhJtqxeDC9PL355uXpURgIGHYhT_m-FEqUMY',
   scope: 'https://www.googleapis.com/auth/spreadsheets',
   people: ['Sharon', 'Claire'],
+  quotesFolder: 'https://drive.google.com/drive/folders/1bWWvkz-MBCPwfV8jzJWe0nM9RhEUXkdb',
 };
