@@ -356,7 +356,9 @@ function weekView(D) {
     <div class="page-head"><div><div class="eyebrow">${today}</div><h1>This week</h1></div></div>
     <section class="hero2">
       <div class="hero-card">
-        <div><div class="hero-days">${D.daysToGo ?? '—'}<span> days</span></div>
+        <span class="sun" aria-hidden="true"></span>
+        <svg class="wave" viewBox="0 0 400 90" preserveAspectRatio="none" aria-hidden="true"><path d="M0 52 C60 30 110 70 170 52 S280 22 340 44 S390 60 400 54 V90 H0Z" class="wave-a"/><path d="M0 70 C70 52 120 84 190 70 S300 50 360 64 S395 74 400 72 V90 H0Z" class="wave-b"/></svg>
+        <div><div class="hero-days">${D.daysToGo ?? '—'} <span class="oval">days</span></div>
         <div class="hero-sub">until ${fmtDate(o.weddingDate) || 'the wedding'}${o.venue ? ` · ${esc(o.venue)}` : ''}</div></div>
         <div class="hero-stats">
           <button class="hstat" data-act="tab" data-tab="tasks"><span class="hstat-label">Tasks done</span><span class="hstat-val">${D.done.length}<small> / ${d.tasks.length}</small></span>${meter(D.done.length, d.tasks.length, { cls: 'done' })}<span class="hstat-foot">${D.overdue.length ? `<span class="late-text">${D.overdue.length} overdue</span>` : `${D.soon.length} due this month`}</span></button>
@@ -370,6 +372,7 @@ function weekView(D) {
         ${d.photo ? `<button class="hero-photo-btn" data-act="pick-photo">Change photo</button><div class="peek" title="Pearl">${pearl(70)}</div>` : ''}
       </div>
     </section>
+    <div class="marquee" aria-hidden="true"><div class="marquee-track">${Array(6).fill(`<span>Sharon &amp; Claire</span><span>✦</span><span>${esc(fmtDate(o.weddingDate) || '')}</span><span>✦</span><span>${esc(o.venue || 'Denver')}</span><span>✦</span><span>${D.daysToGo ?? ''} days to go</span><span>✦</span>`).join('')}</div></div>
 
     <section class="section">
       <div class="section-head"><h2>Focus</h2><button class="linkbtn" data-act="tab" data-tab="tasks">All tasks</button></div>
