@@ -189,7 +189,7 @@ async function load() {
 const state = {
   data: null, signedIn: false, authExpired: false, error: '',
   tab: store.get('wp_tab2', 'week'), me: store.get('wp_me', null),
-  filter: 'open', search: '', vtab: 'booked', compare: new Set(),
+  filter: 'open', search: '', openBudget: null, vtab: 'booked', compare: new Set(),
   gq: '', gside: '', ggroup: '', grsvp: '', drawer: null, modal: null,
 };
 
@@ -463,6 +463,34 @@ function quoteCard(q) {
 }
 
 // ----- Money -----
+function budgetMeter(est, act, planned) {
+  const base = Math.max(planned, est, act, 1); const over = planned > 0 && Math.max(est, act) > planned;
+  return `<div class="meter bmeter">${est ? `<i class="est ${over ? 'late' : ''}" style="width:${pct(est, base)}%"></i>` : ''}${act ? `<i class="${over && act > planned ? 'late' : ''}" style="width:${pct(act, base)}%"></i>` : ''}${over ? `<b class="plan-mark" style="left:${pct(planned, base)}%"></b>` : ''}</div>`;
+}
+function budgetSummary(b, total) {
+  const p = n0(b.pct) * total; const est = n0(b.est); const act = n0(b.act); const top = Math.max(est, act);
+  return `<span class="bname">${esc(b.cat)}<span class="muted small"> · ${isNum(b.pct) ? `${+(b.pct * 100).toFixed(2)}%` : '—'}</span></span>${budgetMeter(est, act, p)}
+    <span class="fig">${top ? `<b class="${top > p ? 'late-text' : ''}">${money(top)}</b> of ` : ''}${money(p)}${act ? `<span class="muted small"> · ${money(act)} spent</span>` : ''}</span><span class="chev" aria-hidden="true">›</span>`;
+}
+function budgetItem(b, total) {
+  const open = state.openBudget === b.row;
+  const f = (k, label, val, extra = '') => `<label class="f">${label}<input class="field" data-act="budget" data-row="${b.row}" data-k="${k}" value="${val}" ${extra}></label>`;
+  return `<div class="bitem ${open ? 'open' : ''}">
+    <button class="brow" data-act="toggle-budget" data-row="${b.row}" aria-expanded="${open}" data-brow="${b.row}" data-tip="${esc(`${b.cat}: planned ${money(n0(b.pct) * total)}, estimated ${money(n0(b.est))}, spent ${money(n0(b.act))}`)}">${budgetSummary(b, total)}</button>
+    ${open ? `<div class="bedit">
+      ${f('cat', 'Category', esc(b.cat))}
+      ${f('pct', '% of budget', isNum(b.pct) ? +(b.pct * 100).toFixed(2) : '', 'inputmode="decimal"')}
+      <label class="f">Planned<div class="field ro-field" data-planned="${b.row}">${money(n0(b.pct) * total)}</div></label>
+      ${f('est', 'Estimated / quoted ($)', isNum(b.est) ? b.est : '', 'inputmode="decimal"')}
+      ${f('act', 'Actual spent ($)', isNum(b.act) ? b.act : '', 'inputmode="decimal"')}
+      <label class="f wide">Notes<input class="field" data-act="budget" data-row="${b.row}" data-k="notes" value="${esc(b.notes)}"></label>
+    </div>` : ''}</div>`;
+}
+function budgetTotal(splits, total) {
+  const d = state.data; const off = Math.abs(splits - 1) > 0.001;
+  return `<span class="bname">Total <span class="small ${off ? 'late-text' : 'muted'}">· ${Math.round(splits * 1000) / 10}% of budget</span></span>
+    <span class="fig">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))} estimated · ${money(d.budget.reduce((a, b) => a + n0(b.act), 0))} spent · ${money(splits * total)} planned</span>`;
+}
 function moneyView(D) {
   const d = state.data; const total = n0(d.o.budget);
   const planned = (b) => n0(b.pct) * total;
@@ -477,25 +505,18 @@ function moneyView(D) {
   const pays = [...D.payments].sort((a, b) => (a.status === 'Paid') - (b.status === 'Paid') || n0(a.due) - n0(b.due));
   const splitOff = Math.abs(D.splits - 1) > 0.001;
   return `<div class="page-head"><div><h1>Money</h1><p>Budget ${money(total)} · ${money(D.committed)} committed · ${money(D.paid)} paid</p></div><button class="btn primary" data-act="add-payment">+ Add payment</button></div>
-    ${splitOff ? `<div class="banner warn"><span>Your category splits add up to <b>${Math.round(D.splits * 1000) / 10}%</b>. Adjust the percentages below until they total 100%.</span></div>` : ''}
+    ${splitOff ? `<div class="banner warn"><span>Your category splits add up to <b>${Math.round(D.splits * 1000) / 10}%</b>. Tap a category below to change its percentage until they total 100%.</span></div>` : ''}
     <section class="grid-3">
       <div class="card tile"><div class="label">Committed</div><div class="big">${money(D.committed)}<small> / ${money(total)}</small></div>${meter(D.committed, total)}<div class="foot">${money(total - D.committed)} not yet committed</div></div>
       <div class="card tile"><div class="label">Paid</div><div class="big">${money(D.paid)}<small> / ${money(D.committed)}</small></div>${meter(D.paid, D.committed, { cls: 'done' })}<div class="foot">${money(D.committed - D.paid)} still owed</div></div>
       <div class="card tile"><div class="label">Quoted (estimates)</div><div class="big">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))}</div>${meter(d.budget.reduce((a, b) => a + n0(b.est), 0), total)}<div class="foot">from the Estimated column</div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Budget by category</h2><span class="hint">estimate vs. planned</span></div>
-      <div class="card pad"><div class="mlist">${d.budget.map((b) => { const p = planned(b); const e = Math.max(n0(b.est), n0(b.act)); return `<div class="mrow" data-tip="${esc(`${b.cat}: planned ${money(p)}, estimated ${money(n0(b.est))}, spent ${money(n0(b.act))}`)}"><span>${esc(b.cat)}</span>${meter(e, p)}<span class="fig">${e ? `<b class="${e > p ? 'late-text' : ''}">${money(e)}</b> of ` : ''}${money(p)}</span></div>`; }).join('')}</div></div></section>
+    <section class="section"><div class="section-head"><h2>Budget by category</h2><span class="hint">Tap a category to edit it</span></div>
+      <div class="card blist">${d.budget.map((b) => budgetItem(b, total)).join('')}
+        <div class="btotal" id="budget-total">${budgetTotal(D.splits, total)}</div></div>
+      <div class="legend"><span><i style="background:var(--data)"></i>Spent</span><span><i style="background:color-mix(in srgb,var(--data) 40%,transparent)"></i>Estimated / quoted</span><span><i style="background:var(--data-soft)"></i>Planned</span><span><i style="background:var(--late)"></i>Over plan</span></div></section>
     <section class="section"><div class="section-head"><h2>Payments by month</h2><span class="hint">unpaid, scheduled</span></div><div class="card pad">${cashChart}</div></section>
-    <section class="section"><div class="section-head"><h2>Payments</h2></div><div class="card list">${pays.length ? pays.map(paymentItem).join('') : '<div class="empty">No payments yet. Booking a quote adds its payment schedule here, or tap “Add payment”.</div>'}</div></section>
-    <section class="section"><div class="section-head"><h2>Budget details</h2><span class="hint">Edit percentages, estimates and actuals</span></div>
-      <div class="card scroll-x"><table class="data"><thead><tr><th>Category</th><th class="num">% of budget</th><th class="num">Planned</th><th class="num">Estimated</th><th class="num">Actual</th><th>Notes</th></tr></thead>
-      <tbody>${d.budget.map((b) => `<tr><td><input class="cell wide" data-act="budget" data-row="${b.row}" data-k="cat" value="${esc(b.cat)}"></td>
-        <td><input class="cell num" inputmode="decimal" data-act="budget" data-row="${b.row}" data-k="pct" value="${isNum(b.pct) ? +(b.pct * 100).toFixed(2) : ''}"></td>
-        <td class="ro num">${money(planned(b))}</td>
-        <td><input class="cell num" inputmode="decimal" data-act="budget" data-row="${b.row}" data-k="est" value="${isNum(b.est) ? b.est : ''}"></td>
-        <td><input class="cell num" inputmode="decimal" data-act="budget" data-row="${b.row}" data-k="act" value="${isNum(b.act) ? b.act : ''}"></td>
-        <td><input class="cell wide" data-act="budget" data-row="${b.row}" data-k="notes" value="${esc(b.notes)}"></td></tr>`).join('')}</tbody>
-      <tfoot><tr><td>Total</td><td class="num ${splitOff ? 'late-text' : ''}">${Math.round(D.splits * 1000) / 10}%</td><td class="num">${money(D.splits * total)}</td><td class="num">${money(d.budget.reduce((a, b) => a + n0(b.est), 0))}</td><td class="num">${money(d.budget.reduce((a, b) => a + n0(b.act), 0))}</td><td></td></tr></tfoot></table></div></section>`;
+    <section class="section"><div class="section-head"><h2>Payments</h2></div><div class="card list">${pays.length ? pays.map(paymentItem).join('') : '<div class="empty">No payments yet. Booking a quote adds its payment schedule here, or tap “Add payment”.</div>'}</div></section>`;
 }
 
 // ----- Guests -----
@@ -696,7 +717,12 @@ function onBudgetChange(el) {
   else v = el.value;
   r[k] = v;
   save(() => writeCells([{ range: `Budget!${col}${r.row}`, values: [[k === 'cat' || k === 'notes' ? asText(v) : v]] }]));
-  if (!isEditing()) render(); else scheduleRefresh(3000);
+  // refresh the chart row, planned figure and totals without stealing focus from the next field
+  const total = n0(state.data.o.budget); const D = derived();
+  const row = app.querySelector(`[data-brow="${r.row}"]`); if (row) row.innerHTML = budgetSummary(r, total);
+  const pl = app.querySelector(`[data-planned="${r.row}"]`); if (pl) pl.textContent = money(n0(r.pct) * total);
+  const tot = document.getElementById('budget-total'); if (tot) tot.innerHTML = budgetTotal(D.splits, total);
+  if (k === 'pct' && Math.abs(D.splits - 1) <= 0.001 && !isEditing()) render();
 }
 
 // Decode any image the browser can show; iPhone/Mac HEIC photos are converted in the browser first.
@@ -759,6 +785,7 @@ app.addEventListener('click', (e) => {
   if (act === 'tab') { state.tab = el.dataset.tab; state.drawer = null; store.set('wp_tab2', state.tab); render(); window.scrollTo(0, 0); }
   else if (act === 'filter') { state.filter = el.dataset.f; render(); }
   else if (act === 'vtab') { state.vtab = el.dataset.v; render(); }
+  else if (act === 'toggle-budget') { const r = Number(el.dataset.row); state.openBudget = state.openBudget === r ? null : r; render(); }
   else if (act === 'signin' || act === 'reconnect') signIn('');
   else if (act === 'switch-me') { state.me = null; store.del('wp_me'); render(); }
   else if (act === 'set-me') { state.me = el.dataset.who; store.set('wp_me', state.me); render(); }
