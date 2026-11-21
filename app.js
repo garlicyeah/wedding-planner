@@ -211,8 +211,8 @@ function render() {
   if (!DEMO && !state.signedIn) { app.innerHTML = signInView(); return; }
   if (!state.data) { app.innerHTML = '<div class="splash">Loading your plan…</div>'; return; }
   const D = derived();
-  const tabs = [['home', 'Home'], ['vendors', 'Vendors'], ['budget', 'Budget'], ['guests', 'Guests']];
-  const view = { home: homeView, vendors: vendorsView, budget: budgetView, guests: guestsView }[state.tab] || homeView;
+  const tabs = [['home', 'Home'], ['vendors', 'Vendors'], ['budget', 'Budget'], ['guests', 'Guests'], ['notes', 'Notes']];
+  const view = { home: homeView, vendors: vendorsView, budget: budgetView, guests: guestsView, notes: notesView }[state.tab] || homeView;
   app.innerHTML = `
     <header class="topbar"><div class="topbar-inner">
       <div class="brand"><h1>Sharon &amp; Claire</h1>${D.daysToGo !== null ? `<span class="count">${D.daysToGo} days to go</span>` : ''}</div>
@@ -264,8 +264,6 @@ function homeView(D) {
       <div class="card stat ${isNum(o.targetGuests) && D.guests.length > o.targetGuests ? 'warn' : ''}"><div class="label">Guests</div><div class="value">${D.guests.length}</div><div class="sub">invited · target ${isNum(o.targetGuests) ? o.targetGuests : '—'} · ${D.attending} yes</div></div>
     </section>
 
-    ${claudePanel()}
-
     <section class="section">
       <div class="section-head"><h2>Tasks</h2><button class="btn primary" data-act="add-task">+ Add task</button></div>
       <div class="filters">
@@ -276,9 +274,10 @@ function homeView(D) {
     </section>`;
 }
 
-function claudePanel() {
-  const recent = [...state.data.decisions].reverse().slice(0, 8);
-  return `<section class="card claude-panel section">
+function notesView() {
+  const recent = [...state.data.decisions].reverse();
+  return `<section class="section"><div class="section-head"><h2>Notes</h2></div></section>
+  <section class="card claude-panel">
     <div>
       <h2>Tell Claude</h2>
       <p class="help">Standing instructions or context for Claude's notes, like “we're fine with ~140 guests” or “Claire owns all family tasks.” To refresh the notes, open Claude and say <code class="inline">refresh my wedding notes</code>.</p>
@@ -287,7 +286,7 @@ function claudePanel() {
     </div>
     <div>
       <h3 class="muted" style="font:600 12px Inter;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 10px">What Claude knows you've decided</h3>
-      ${recent.length ? `<div class="decisions">${recent.map((d) => `<div class="decision">${d.note ? `<div class="meta">Re: ${esc(d.note)}</div>` : ''}<div>${esc(d.text || 'Got it')}</div><div class="meta">${esc(d.author)} · ${fmtStamp(d.ts)}</div></div>`).join('')}</div>` : '<p class="empty">Nothing yet. Tap “Got it” on one of Claude\'s notes, or add an instruction.</p>'}
+      ${recent.length ? `<div class="decisions" style="max-height:none">${recent.map((d) => `<div class="decision">${d.note ? `<div class="meta">Re: ${esc(d.note)}</div>` : ''}<div>${esc(d.text || 'Got it')}</div><div class="meta">${esc(d.author)} · ${fmtStamp(d.ts)}</div></div>`).join('')}</div>` : '<p class="empty">Nothing yet. Tap “Got it” on one of Claude\'s notes, or add an instruction.</p>'}
     </div>
   </section>`;
 }

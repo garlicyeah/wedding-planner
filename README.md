@@ -6,7 +6,8 @@ A small web app on top of our Google Sheet. The sheet is the single source of tr
 - **Demo with sample data (nothing saved):** https://garlicyeah.github.io/wedding-planner/?demo
 
 ## What's in it
-- **Home:** countdown, at-a-glance stats, the task list (status, owner, due date, notes, comment threads), Claude's notes with a "Got it" button, and a "Tell Claude" box.
+- **Home:** countdown, at-a-glance stats, and the task list (status, owner, due date, notes, comment threads) with Claude's notes and a "Got it" button.
+- **Notes:** a "Tell Claude" box and everything Claude knows you've decided.
 - **Vendors / Budget / Guests:** editable tables that write straight to the matching tabs.
 
 ## How it fits together
