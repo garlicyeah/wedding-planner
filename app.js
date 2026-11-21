@@ -35,7 +35,7 @@ const PEARL = `<g class="p-ear p-ear-l"><path d="M22 14C13 30 17 45 31 49l9-19Z"
 <path d="M47.5 65.5q2.5 2 5 0" stroke="#3a2a2a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
 <path d="M25 69q25 11 50 0l-6 9q-19 22-38 0Z" fill="#6b9fd6"/><path d="M50 83l-6 12 6-3.5 6 3.5Z" fill="#5a8cc2"/>`;
 const pearl = (size = 40, cls = '') => `<svg class="pearl ${cls} ${isNight() ? 'sleepy' : ''}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="Pearl"><title>Pearl</title>${PEARL}</svg>`;
-// Pearl's phrases. Editable on the Notes tab (saved to the Settings sheet). Placeholders: {days} {overdue} {name}
+// Pearl's phrases (ask Claude to change them). Saved overrides in Settings A48:B49 still win. Placeholders: {days} {overdue} {name}; 'Claire:' / 'Sharon:' prefix = that person only
 const DEFAULT_PEARL_TAP = ["G'day! 🌿", 'Pearl is a tree kangaroo. Excellent at climbing to-do lists.', 'Hop to it!', 'Pearl believes in you two.', 'Have you had water today?',
   'Pearl officially approves of this wedding.', 'Pearl would like a seat at the head table.', 'Boing! 🦘', '{days} sleeps until the wedding!', "Psst… {overdue} overdue. Pearl won't tell.", 'Hi {name}! 👋',
   'Claire: mom.', 'ESQUEEZIE!!', 'Cake?'];
@@ -678,13 +678,6 @@ function notesView() {
         ${d.photo ? `<div class="form-grid" style="margin-top:14px"><label class="f">Photo framing: left ↔ right<input type="range" min="0" max="100" value="${d.photoX}" data-act="frame" data-k="photoX"></label><label class="f">Photo framing: up ↕ down<input type="range" min="0" max="100" value="${d.photoY}" data-act="frame" data-k="photoY"></label></div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn small" data-act="pick-photo">${d.photo ? 'Change photo' : 'Add photo'}</button><a class="btn small" href="${CONFIG.quotesFolder}" target="_blank" rel="noopener">Quotes folder ↗</a></div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Pearl's phrases</h2><button class="linkbtn" data-act="reset-pearl">Reset to defaults</button></div>
-      <div class="card pad"><p class="muted small" style="margin:0 0 12px">One phrase per line. Use <code class="inline">{days}</code>, <code class="inline">{overdue}</code> or <code class="inline">{name}</code> and Pearl fills them in (a phrase is skipped when its blank doesn't apply, like {overdue} when nothing is late). Start a line with <code class="inline">Claire:</code> or <code class="inline">Sharon:</code> to say it only to that person. Changes save when you click away.</p>
-        <div class="grid-2" style="gap:16px">
-          <label class="f">When you tap Pearl<textarea class="field phrases" id="pearl-tap" data-act="pearl-phrases" data-key="pearlTap" rows="11">${esc(phraseList('pearlTap', DEFAULT_PEARL_TAP).join('\n'))}</textarea></label>
-          <label class="f">When you check off a task<textarea class="field phrases" id="pearl-cheer" data-act="pearl-phrases" data-key="pearlCheer" rows="11">${esc(phraseList('pearlCheer', DEFAULT_PEARL_CHEER).join('\n'))}</textarea></label>
-        </div>
-        <div style="margin-top:12px"><button class="btn small" data-act="try-pearl">${pearl(22)} Try a phrase</button></div></div></section>
     <section class="section"><div class="section-head"><h2>What Claude knows you've decided</h2><span class="hint">${recent.length}</span></div>
       ${recent.length ? `<div style="display:grid;gap:8px">${recent.map((x) => `<div class="decision">${x.note ? `<div class="meta">Re: ${esc(x.note)}</div>` : ''}<div>${esc(x.text || 'Got it')}</div><div class="meta">${esc(x.author)} · ${fmtStamp(x.ts)}</div></div>`).join('')}</div>` : '<div class="card"><div class="empty">Nothing yet. Tap “Got it” on one of Claude\'s notes, or add an instruction.</div></div>'}</section>`;
 }
@@ -943,13 +936,11 @@ app.addEventListener('click', (e) => {
   if (act === 'open-task') { const inner = e.target.closest('button, a, input, select'); if (inner && inner !== el) return; state.drawer = { type: 'task', id: el.dataset.id }; render(); return; }
   if (act === 'open-vendor') { state.drawer = { type: 'vendor', row: Number(el.dataset.row) }; render(); return; }
   if (act === 'open-guest') { state.drawer = { type: 'guest', row: Number(el.dataset.row) }; render(); return; }
-  if (act === 'tab') { state.tab = el.dataset.tab; state.drawer = null; store.set('wp_tab2', state.tab); render(); window.scrollTo(0, 0); }
+  if (act === 'tab') { document.getElementById('pearl-bubble')?.classList.remove('show'); state.tab = el.dataset.tab; state.drawer = null; store.set('wp_tab2', state.tab); render(); window.scrollTo(0, 0); }
   else if (act === 'filter') { state.filter = el.dataset.f; render(); }
   else if (act === 'vtab') { state.vtab = el.dataset.v; render(); }
   else if (act === 'toggle-sug') { state.gsugAll = !state.gsugAll; render(); }
   else if (act === 'open-sug') { state.gsugOpen = !state.gsugOpen; render(); }
-  else if (act === 'reset-pearl') { if (!confirm("Reset Pearl's phrases to the defaults?")) return; d.pearlTap = ''; d.pearlCheer = ''; render(); save(() => writeCells([{ range: 'Settings!A48:B49', values: [['pearl_tap', ''], ['pearl_cheer', '']] }], true), 'Pearl is back to her usual lines'); }
-  else if (act === 'try-pearl') { const p = el.querySelector('svg.pearl'); if (p) pearlSay(p, pick(pearlLines())); }
   else if (act === 'set-owner') {
     e.stopPropagation(); const t = taskById(el.dataset.id); if (!t) return;
     const prev = t.owner; const next = t.owner === el.dataset.v ? '' : el.dataset.v;
@@ -1010,10 +1001,6 @@ app.addEventListener('change', (e) => {
     o[key] = local; if (key === 'weddingDate') for (const t of state.data.tasks) if (isNum(t.daysBefore)) t.due = local - t.daysBefore;
     save(() => writeCells([{ range: `Overview!${el.dataset.cell}`, values: [[write]] }])); render();
   } else if (act === 'gfilter') { state[el.dataset.key] = el.value; render(); }
-  else if (act === 'pearl-phrases') {
-    const d = state.data; d[el.dataset.key] = el.value.split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
-    save(() => writeCells([{ range: 'Settings!A48:B49', values: [['pearl_tap', d.pearlTap || ''], ['pearl_cheer', d.pearlCheer || '']] }], true), "Saved Pearl's phrases");
-  }
   else if (act === 'frame') {
     const d = state.data; d[el.dataset.k] = Number(el.value);
     save(() => writeCells([{ range: 'Settings!A45:B46', values: [['photo_x', d.photoX], ['photo_y', d.photoY]] }]), 'Framing saved');
